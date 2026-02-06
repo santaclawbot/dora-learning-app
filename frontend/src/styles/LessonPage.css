@@ -1,0 +1,206 @@
+.lesson-page {
+  min-height: 100vh;
+  background-color: #f1f5f9;
+}
+
+.lesson-header {
+  background: white;
+  padding: 1.5rem 2rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  margin-bottom: 2rem;
+}
+
+.back-btn {
+  display: inline-block;
+  margin-bottom: 1rem;
+  color: #3b82f6;
+  text-decoration: none;
+  font-weight: 600;
+  transition: color 0.2s;
+}
+
+.back-btn:hover {
+  color: #1e40af;
+}
+
+.lesson-header h1 {
+  margin: 0.5rem 0 1.5rem 0;
+  color: #1e293b;
+  font-size: 2rem;
+}
+
+.progress-bar {
+  width: 100%;
+  height: 8px;
+  background-color: #e2e8f0;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+  transition: width 0.3s ease;
+}
+
+.lesson-content {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 2rem;
+  display: grid;
+  grid-template-columns: 1fr 300px;
+  gap: 2rem;
+  margin-bottom: 2rem;
+}
+
+.lesson-main {
+  background: white;
+  padding: 2rem;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.lesson-main h2,
+.lesson-main h3 {
+  color: #1e293b;
+  margin-top: 2rem;
+  margin-bottom: 1rem;
+}
+
+.lesson-main h2 {
+  font-size: 1.5rem;
+  margin-top: 0;
+}
+
+.lesson-text {
+  line-height: 1.8;
+  color: #475569;
+  margin-bottom: 2rem;
+  font-size: 1rem;
+}
+
+.audio-section {
+  background: #f0f9ff;
+  padding: 1.5rem;
+  border-radius: 8px;
+  border-left: 4px solid #3b82f6;
+  margin-bottom: 2rem;
+}
+
+.audio-btn {
+  background-color: #3b82f6;
+  color: white;
+  padding: 0.75rem 1.5rem;
+  border: none;
+  border-radius: 6px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  margin-bottom: 0.5rem;
+}
+
+.audio-btn:hover {
+  background-color: #2563eb;
+}
+
+.audio-note {
+  margin: 0.5rem 0 0 0;
+  font-size: 0.85rem;
+  color: #64748b;
+}
+
+.exercises-section {
+  margin-bottom: 2rem;
+}
+
+.exercise {
+  background: #f8fafc;
+  padding: 1rem;
+  border-radius: 6px;
+  margin-bottom: 1rem;
+  border-left: 3px solid #a78bfa;
+}
+
+.exercise p {
+  margin: 0;
+  color: #334155;
+}
+
+.lesson-actions {
+  margin-top: 2rem;
+  padding-top: 2rem;
+  border-top: 1px solid #e2e8f0;
+}
+
+.complete-btn {
+  background-color: #10b981;
+  color: white;
+  padding: 0.75rem 1.5rem;
+  border: none;
+  border-radius: 6px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  width: 100%;
+}
+
+.complete-btn:hover {
+  background-color: #059669;
+}
+
+.lesson-sidebar {
+  height: fit-content;
+  position: sticky;
+  top: 20px;
+}
+
+.lesson-info {
+  background: white;
+  padding: 1.5rem;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.lesson-info h4 {
+  margin: 0 0 1rem 0;
+  color: #1e293b;
+}
+
+.lesson-info dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.5rem 1rem;
+  margin: 0;
+}
+
+.lesson-info dt {
+  font-weight: 600;
+  color: #475569;
+  font-size: 0.9rem;
+}
+
+.lesson-info dd {
+  color: #1e293b;
+  font-size: 0.9rem;
+  margin: 0;
+}
+
+.lesson-loading,
+.lesson-error {
+  max-width: 1200px;
+  margin: 4rem auto;
+  padding: 2rem;
+  text-align: center;
+  background: white;
+  border-radius: 12px;
+}
+
+.lesson-error a {
+  color: #3b82f6;
+  text-decoration: none;
+  font-weight: 600;
+  margin-top: 1rem;
+  display: inline-block;
+}

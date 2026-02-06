@@ -1,0 +1,148 @@
+.profile-page {
+  min-height: 100vh;
+  background-color: #f1f5f9;
+}
+
+.profile-header {
+  background: white;
+  padding: 1.5rem 2rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  margin-bottom: 2rem;
+}
+
+.back-btn {
+  display: inline-block;
+  margin-bottom: 1rem;
+  color: #3b82f6;
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.profile-header h1 {
+  margin: 0.5rem 0 0 0;
+  color: #1e293b;
+  font-size: 2rem;
+}
+
+.profile-content {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 0 2rem 2rem;
+}
+
+.profile-card {
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  overflow: hidden;
+}
+
+.profile-info {
+  padding: 2rem;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.profile-info h2 {
+  margin: 0 0 0.5rem 0;
+  color: #1e293b;
+  font-size: 1.8rem;
+}
+
+.email {
+  margin: 0.5rem 0 0.25rem 0;
+  color: #64748b;
+  font-size: 1rem;
+}
+
+.joined {
+  margin: 0.5rem 0 1.5rem 0;
+  color: #94a3b8;
+  font-size: 0.9rem;
+}
+
+.edit-btn {
+  background-color: #3b82f6;
+  color: white;
+  padding: 0.5rem 1rem;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: background-color 0.2s;
+}
+
+.edit-btn:hover {
+  background-color: #2563eb;
+}
+
+.stats-section {
+  padding: 2rem;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.stats-section h3 {
+  margin: 0 0 1.5rem 0;
+  color: #1e293b;
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 1.5rem;
+}
+
+.stat {
+  text-align: center;
+  padding: 1rem;
+  background: #f8fafc;
+  border-radius: 8px;
+}
+
+.stat-value {
+  font-size: 2rem;
+  font-weight: 700;
+  color: #3b82f6;
+  margin-bottom: 0.5rem;
+}
+
+.stat-label {
+  font-size: 0.9rem;
+  color: #64748b;
+}
+
+.preferences-section {
+  padding: 2rem;
+}
+
+.preferences-section h3 {
+  margin: 0 0 1.5rem 0;
+  color: #1e293b;
+}
+
+.preference {
+  margin-bottom: 1rem;
+}
+
+.preference label {
+  display: flex;
+  align-items: center;
+  color: #475569;
+  cursor: pointer;
+  font-size: 0.95rem;
+}
+
+.preference input[type="checkbox"] {
+  margin-right: 0.75rem;
+  cursor: pointer;
+  width: 18px;
+  height: 18px;
+}
+
+.profile-loading {
+  max-width: 800px;
+  margin: 4rem auto;
+  padding: 2rem;
+  text-align: center;
+  background: white;
+  border-radius: 12px;
+}

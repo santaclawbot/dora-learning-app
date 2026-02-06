@@ -3,11 +3,24 @@ const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
 const path = require('path');
+const fs = require('fs');
 const sqlite3 = require('sqlite3').verbose();
-const TelegramBot = require('node-telegram-bot-api');
+const jwt = require('jsonwebtoken');
+const axios = require('axios');
 
 const app = express();
 const PORT = process.env.BACKEND_PORT || 3001;
+const JWT_SECRET = process.env.JWT_SECRET || 'dora-super-secret-key-2024';
+
+// Hardcoded users for MVP
+const USERS = {
+  'aiden': { id: 1, username: 'aiden', password: 'aiden123', name: 'Aiden', avatar: '🦁' },
+  'marcus': { id: 2, username: 'marcus', password: 'marcus123', name: 'Marcus', avatar: '🐻' }
+};
+
+// ElevenLabs config
+const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY || 'sk_77718b72529589bb7f4b81b6f6e875436b8238093c3f9009';
+const ELEVENLABS_VOICE_ID = process.env.ELEVENLABS_VOICE_ID || 'EXAVITQu4vr4xnSDxMaL'; // Bella - warm female voice
 
 // Database connection
 const DB_PATH = process.env.DATABASE_URL || './data/dora.db';
@@ -16,269 +29,180 @@ const db = new sqlite3.Database(DB_PATH, (err) => {
     console.error('❌ Database connection error:', err);
   } else {
     console.log('📦 Database connected');
+    // Update lessons with fun content
+    updateLessonsContent();
   }
 });
 
-// Telegram Bot Setup
-const TELEGRAM_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-let bot = null;
+// Create audio cache directory
+const AUDIO_CACHE_DIR = path.join(__dirname, 'audio-cache');
+if (!fs.existsSync(AUDIO_CACHE_DIR)) {
+  fs.mkdirSync(AUDIO_CACHE_DIR, { recursive: true });
+}
 
-if (TELEGRAM_TOKEN) {
-  bot = new TelegramBot(TELEGRAM_TOKEN, { polling: true });
-  console.log('🤖 Telegram bot initialized (polling mode)');
-  
-  // /start command
-  bot.onText(/\/start/, async (msg) => {
-    const chatId = msg.chat.id;
-    const username = msg.from.username || msg.from.first_name || 'friend';
-    
-    // Register user if new
-    db.run(
-      `INSERT OR IGNORE INTO users (telegram_id, name) VALUES (?, ?)`,
-      [String(chatId), username]
-    );
-    
-    const welcomeMessage = `
-🎓 *Welcome to Dora Learning App, ${username}!*
+function updateLessonsContent() {
+  const lessons = [
+    {
+      id: 1,
+      title: 'Hello! Meet Dora 🌟',
+      description: 'Say hi to Dora and learn about your adventure!',
+      content: `Hi there, friend! I'm Dora, and I'm so happy to meet you!
 
-I'm your personal learning assistant. Here's what I can help you with:
+Today we're going to learn together. Are you ready for an adventure?
 
-📚 /lessons - Browse available lessons
-📊 /progress - Check your learning progress
-❓ /help - Get help and support
+Learning is like going on a treasure hunt. Every new thing you learn is like finding a shiny gem!
 
-Ready to start learning? Tap a button below!
-    `;
-    
-    bot.sendMessage(chatId, welcomeMessage, {
-      parse_mode: 'Markdown',
-      reply_markup: {
-        inline_keyboard: [
-          [{ text: '📚 Browse Lessons', callback_data: 'browse_lessons' }],
-          [{ text: '🚀 Quick Start', callback_data: 'quick_start' }],
-          [{ text: '📊 My Progress', callback_data: 'my_progress' }]
-        ]
-      }
-    });
-    
-    logMessage(chatId, msg.text, 'command', 'welcome_sent');
-  });
+Here's what we'll do:
+• Listen to fun stories
+• Answer cool questions  
+• Collect stars as you learn!
 
-  // /lessons command
-  bot.onText(/\/lessons/, async (msg) => {
-    const chatId = msg.chat.id;
-    sendLessonsList(chatId);
-  });
+Let's go! Tap the play button to hear me talk to you!`,
+      difficulty: 'Easy',
+      duration_minutes: 5,
+      thumbnail_url: '/images/dora-wave.png'
+    },
+    {
+      id: 2,
+      title: 'Colors Are Everywhere! 🌈',
+      description: 'Explore the rainbow with Dora!',
+      content: `Look around you! Colors are everywhere!
 
-  // /progress command
-  bot.onText(/\/progress/, async (msg) => {
-    const chatId = msg.chat.id;
-    
-    db.get(
-      `SELECT u.id, u.name FROM users u WHERE u.telegram_id = ?`,
-      [String(chatId)],
-      (err, user) => {
-        if (err || !user) {
-          bot.sendMessage(chatId, '❌ Please /start first to register.');
-          return;
-        }
-        
-        db.all(
-          `SELECT l.title, ul.status, ul.progress_percent, ul.score 
-           FROM user_lessons ul 
-           JOIN lessons l ON ul.lesson_id = l.id 
-           WHERE ul.user_id = ?`,
-          [user.id],
-          (err, rows) => {
-            if (err || !rows || rows.length === 0) {
-              bot.sendMessage(chatId, `📊 *Your Progress*\n\nYou haven't started any lessons yet. Use /lessons to get started!`, { parse_mode: 'Markdown' });
-              return;
-            }
-            
-            let progressMsg = `📊 *Your Learning Progress*\n\n`;
-            rows.forEach(row => {
-              const statusEmoji = row.status === 'completed' ? '✅' : row.status === 'in_progress' ? '🔄' : '⏳';
-              progressMsg += `${statusEmoji} *${row.title}*\n`;
-              progressMsg += `   Progress: ${row.progress_percent || 0}%`;
-              if (row.score) progressMsg += ` | Score: ${row.score}`;
-              progressMsg += '\n\n';
-            });
-            
-            bot.sendMessage(chatId, progressMsg, { parse_mode: 'Markdown' });
-          }
-        );
-      }
-    );
-    
-    logMessage(chatId, msg.text, 'command', 'progress_shown');
-  });
+The sky is BLUE like a blueberry.
+The sun is YELLOW like a banana.
+Grass is GREEN like a frog.
+And apples can be RED like a firetruck!
 
-  // /help command
-  bot.onText(/\/help/, async (msg) => {
-    const chatId = msg.chat.id;
-    const helpMessage = `
-🆘 *Dora Learning App Help*
+Can you find something blue near you right now? 
+How about something yellow?
 
-*Available Commands:*
-/start - Start the bot & register
-/lessons - View all lessons
-/progress - Check your progress
-/help - Show this help message
+Colors make our world so beautiful! 
+Each color is special, just like you!
 
-*How it works:*
-1. Browse lessons with /lessons
-2. Tap a lesson to start learning
-3. Answer questions to test your knowledge
-4. Track your progress with /progress
+Tap the button when you're ready to move on!`,
+      difficulty: 'Easy',
+      duration_minutes: 8,
+      thumbnail_url: '/images/rainbow.png'
+    },
+    {
+      id: 3,
+      title: 'Counting Fun! 🔢',
+      description: 'Count to 10 with Dora!',
+      content: `Let's count together! Ready?
 
-*Need more help?*
-Contact support at support@example.com
-    `;
-    
-    bot.sendMessage(chatId, helpMessage, { parse_mode: 'Markdown' });
-    logMessage(chatId, msg.text, 'command', 'help_shown');
-  });
+1 - One little star ⭐
+2 - Two happy eyes 👀
+3 - Three colorful balloons 🎈
+4 - Four fluffy clouds ☁️
+5 - Five fingers on your hand ✋
 
-  // Handle button callbacks
-  bot.on('callback_query', async (query) => {
-    const chatId = query.message.chat.id;
-    const data = query.data;
-    
-    bot.answerCallbackQuery(query.id);
-    
-    if (data === 'browse_lessons') {
-      sendLessonsList(chatId);
-    } else if (data === 'quick_start') {
-      // Start with first lesson
-      db.get('SELECT * FROM lessons ORDER BY id ASC LIMIT 1', [], (err, lesson) => {
-        if (lesson) {
-          sendLesson(chatId, lesson);
-        } else {
-          bot.sendMessage(chatId, '📚 No lessons available yet. Check back soon!');
-        }
-      });
-    } else if (data === 'my_progress') {
-      bot.emit('text', { chat: { id: chatId }, from: query.from, text: '/progress' });
-    } else if (data.startsWith('lesson_')) {
-      const lessonId = parseInt(data.replace('lesson_', ''));
-      db.get('SELECT * FROM lessons WHERE id = ?', [lessonId], (err, lesson) => {
-        if (lesson) {
-          sendLesson(chatId, lesson);
-          // Track progress
-          db.get('SELECT id FROM users WHERE telegram_id = ?', [String(chatId)], (err, user) => {
-            if (user) {
-              db.run(
-                `INSERT OR REPLACE INTO user_lessons (user_id, lesson_id, status, progress_percent) VALUES (?, ?, 'in_progress', 10)`,
-                [user.id, lessonId]
-              );
-            }
-          });
-        }
-      });
-    } else if (data === 'back_to_lessons') {
-      sendLessonsList(chatId);
+Great job! Now let's keep going...
+
+6 - Six bouncy balls
+7 - Seven pretty flowers 🌸
+8 - Eight busy bees 🐝
+9 - Nine yummy cookies 🍪
+10 - Ten shiny diamonds! 💎
+
+You did it! You can count to 10!
+Give yourself a big hug!`,
+      difficulty: 'Easy',
+      duration_minutes: 10,
+      thumbnail_url: '/images/numbers.png'
     }
-    
-    logMessage(chatId, data, 'callback', 'callback_handled');
-  });
+  ];
 
-  // Handle regular text messages
-  bot.on('message', (msg) => {
-    // Skip commands (they're handled separately)
-    if (msg.text && msg.text.startsWith('/')) return;
-    
-    const chatId = msg.chat.id;
-    
-    // Simple conversational response
-    if (msg.text) {
-      const responses = [
-        "🤔 Interesting! Use /lessons to continue learning.",
-        "📚 Ready to learn? Try /lessons to see available courses.",
-        "💡 Type /help if you need assistance!",
-      ];
-      const response = responses[Math.floor(Math.random() * responses.length)];
-      bot.sendMessage(chatId, response);
-      logMessage(chatId, msg.text, 'message', response);
-    }
-  });
-
-  // Helper: Send lessons list
-  function sendLessonsList(chatId) {
-    db.all('SELECT id, title, difficulty FROM lessons ORDER BY id ASC', [], (err, lessons) => {
-      if (err || !lessons || lessons.length === 0) {
-        bot.sendMessage(chatId, '📚 No lessons available yet. Check back soon!');
-        return;
-      }
-      
-      const keyboard = lessons.map(lesson => [{
-        text: `📖 ${lesson.title} (${lesson.difficulty})`,
-        callback_data: `lesson_${lesson.id}`
-      }]);
-      
-      bot.sendMessage(chatId, '📚 *Available Lessons*\n\nSelect a lesson to get started:', {
-        parse_mode: 'Markdown',
-        reply_markup: { inline_keyboard: keyboard }
-      });
-    });
-  }
-
-  // Helper: Send a lesson
-  function sendLesson(chatId, lesson) {
-    const lessonMessage = `
-📖 *${lesson.title}*
-_Difficulty: ${lesson.difficulty}_
-
-${lesson.description || 'No description available.'}
-
----
-${lesson.content || 'Lesson content coming soon...'}
-    `;
-    
-    bot.sendMessage(chatId, lessonMessage, {
-      parse_mode: 'Markdown',
-      reply_markup: {
-        inline_keyboard: [
-          [{ text: '✅ Mark Complete', callback_data: `complete_${lesson.id}` }],
-          [{ text: '⬅️ Back to Lessons', callback_data: 'back_to_lessons' }]
-        ]
-      }
-    });
-  }
-
-  // Helper: Log message to database
-  function logMessage(userId, text, type, response) {
+  lessons.forEach(lesson => {
     db.run(
-      `INSERT INTO telegram_messages (user_id, message_text, message_type, response) VALUES (?, ?, ?, ?)`,
-      [userId, text, type, response]
+      `UPDATE lessons SET title = ?, description = ?, content = ?, difficulty = ?, duration_minutes = ?, thumbnail_url = ? WHERE id = ?`,
+      [lesson.title, lesson.description, lesson.content, lesson.difficulty, lesson.duration_minutes, lesson.thumbnail_url, lesson.id]
     );
-  }
-
-  // Bot error handling
-  bot.on('polling_error', (error) => {
-    console.error('Telegram polling error:', error.code, error.message);
   });
-
-} else {
-  console.log('⚠️  TELEGRAM_BOT_TOKEN not set - bot disabled');
+  console.log('📚 Lessons content updated');
 }
 
 // Middleware
 app.use(cors());
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
+app.use('/audio', express.static(AUDIO_CACHE_DIR));
+
+// Auth middleware
+function authenticateToken(req, res, next) {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
+
+  if (!token) {
+    return res.status(401).json({ error: 'Access token required' });
+  }
+
+  jwt.verify(token, JWT_SECRET, (err, user) => {
+    if (err) {
+      return res.status(403).json({ error: 'Invalid token' });
+    }
+    req.user = user;
+    next();
+  });
+}
 
 // Health check endpoint
 app.get('/health', (req, res) => {
   res.json({ 
     status: 'ok', 
     timestamp: new Date().toISOString(),
-    telegram_bot: bot ? 'active' : 'disabled'
+    version: '1.0.0'
   });
 });
 
-// API Routes
+// ========== AUTH ROUTES ==========
+
+app.post('/api/auth/login', (req, res) => {
+  const { username, password } = req.body;
+
+  if (!username || !password) {
+    return res.status(400).json({ error: 'Username and password required' });
+  }
+
+  const user = USERS[username.toLowerCase()];
+  
+  if (!user || user.password !== password) {
+    return res.status(401).json({ error: 'Wrong username or password' });
+  }
+
+  const token = jwt.sign(
+    { id: user.id, username: user.username, name: user.name },
+    JWT_SECRET,
+    { expiresIn: '7d' }
+  );
+
+  res.json({
+    token,
+    user: {
+      id: user.id,
+      username: user.username,
+      name: user.name,
+      avatar: user.avatar
+    }
+  });
+});
+
+app.get('/api/auth/me', authenticateToken, (req, res) => {
+  const user = USERS[req.user.username];
+  if (!user) {
+    return res.status(404).json({ error: 'User not found' });
+  }
+  res.json({
+    id: user.id,
+    username: user.username,
+    name: user.name,
+    avatar: user.avatar
+  });
+});
+
+// ========== LESSON ROUTES ==========
+
 app.get('/api/lessons', (req, res) => {
-  db.all('SELECT * FROM lessons ORDER BY id ASC', [], (err, lessons) => {
+  db.all('SELECT id, title, description, difficulty, duration_minutes, thumbnail_url FROM lessons ORDER BY id ASC', [], (err, lessons) => {
     if (err) {
       return res.status(500).json({ error: 'Database error' });
     }
@@ -286,7 +210,7 @@ app.get('/api/lessons', (req, res) => {
   });
 });
 
-app.get('/api/lessons/:id', (req, res) => {
+app.get('/api/lessons/:id', authenticateToken, (req, res) => {
   const { id } = req.params;
   db.get('SELECT * FROM lessons WHERE id = ?', [id], (err, lesson) => {
     if (err) {
@@ -299,40 +223,151 @@ app.get('/api/lessons/:id', (req, res) => {
   });
 });
 
-app.post('/api/users/login', (req, res) => {
-  const { email, password } = req.body;
-  // TODO: Implement proper authentication
-  res.json({
-    token: 'sample-jwt-token',
-    user: { id: 1, email, name: 'User' }
-  });
+app.post('/api/lessons/:id/complete', authenticateToken, (req, res) => {
+  const { id } = req.params;
+  const userId = req.user.id;
+
+  db.run(
+    `INSERT OR REPLACE INTO user_lessons (user_id, lesson_id, status, progress_percent, completed_at) 
+     VALUES (?, ?, 'completed', 100, CURRENT_TIMESTAMP)`,
+    [userId, id],
+    (err) => {
+      if (err) {
+        return res.status(500).json({ error: 'Database error' });
+      }
+      res.json({ success: true, message: 'Lesson completed!' });
+    }
+  );
 });
 
-app.get('/api/users/profile', (req, res) => {
-  // TODO: Get user profile from token
-  res.json({
-    id: 1,
-    name: 'Student Name',
-    email: 'student@example.com',
-    lessonProgress: []
-  });
-});
-
-// Stats endpoint for admin
-app.get('/api/stats', (req, res) => {
-  const stats = {};
+app.get('/api/progress', authenticateToken, (req, res) => {
+  const userId = req.user.id;
   
-  db.get('SELECT COUNT(*) as count FROM users', [], (err, row) => {
-    stats.users = row?.count || 0;
-    
-    db.get('SELECT COUNT(*) as count FROM lessons', [], (err, row) => {
-      stats.lessons = row?.count || 0;
-      
-      db.get('SELECT COUNT(*) as count FROM telegram_messages', [], (err, row) => {
-        stats.messages = row?.count || 0;
-        res.json(stats);
-      });
+  db.all(
+    `SELECT l.id as lesson_id, l.title, ul.status, ul.progress_percent, ul.completed_at
+     FROM user_lessons ul
+     JOIN lessons l ON ul.lesson_id = l.id
+     WHERE ul.user_id = ?`,
+    [userId],
+    (err, rows) => {
+      if (err) {
+        return res.status(500).json({ error: 'Database error' });
+      }
+      res.json({ progress: rows || [] });
+    }
+  );
+});
+
+// ========== TTS ROUTES (ElevenLabs) ==========
+
+app.post('/api/tts/generate', authenticateToken, async (req, res) => {
+  const { text, lessonId } = req.body;
+
+  if (!text) {
+    return res.status(400).json({ error: 'Text is required' });
+  }
+
+  // Create cache key from lesson ID or text hash
+  const cacheKey = lessonId ? `lesson_${lessonId}` : `text_${Buffer.from(text).toString('base64').slice(0, 20)}`;
+  const audioPath = path.join(AUDIO_CACHE_DIR, `${cacheKey}.mp3`);
+
+  // Check cache first
+  if (fs.existsSync(audioPath)) {
+    console.log('🔊 Serving cached audio:', cacheKey);
+    return res.json({ 
+      audioUrl: `/audio/${cacheKey}.mp3`,
+      cached: true 
     });
+  }
+
+  try {
+    console.log('🎙️ Generating TTS for:', text.substring(0, 50) + '...');
+    
+    const response = await axios({
+      method: 'POST',
+      url: `https://api.elevenlabs.io/v1/text-to-speech/${ELEVENLABS_VOICE_ID}`,
+      headers: {
+        'Accept': 'audio/mpeg',
+        'Content-Type': 'application/json',
+        'xi-api-key': ELEVENLABS_API_KEY
+      },
+      data: {
+        text: text,
+        model_id: 'eleven_multilingual_v2',
+        voice_settings: {
+          stability: 0.5,
+          similarity_boost: 0.75,
+          style: 0.5,
+          use_speaker_boost: true
+        }
+      },
+      responseType: 'arraybuffer'
+    });
+
+    // Save to cache
+    fs.writeFileSync(audioPath, response.data);
+    console.log('✅ Audio saved to cache:', audioPath);
+
+    res.json({ 
+      audioUrl: `/audio/${cacheKey}.mp3`,
+      cached: false 
+    });
+
+  } catch (error) {
+    console.error('❌ ElevenLabs TTS error:', error.response?.data || error.message);
+    res.status(500).json({ 
+      error: 'Failed to generate audio',
+      details: error.response?.data?.detail || error.message
+    });
+  }
+});
+
+// Get pre-generated audio for a lesson
+app.get('/api/lessons/:id/audio', authenticateToken, async (req, res) => {
+  const { id } = req.params;
+  const cacheKey = `lesson_${id}`;
+  const audioPath = path.join(AUDIO_CACHE_DIR, `${cacheKey}.mp3`);
+
+  // Check cache
+  if (fs.existsSync(audioPath)) {
+    return res.json({ audioUrl: `/audio/${cacheKey}.mp3`, cached: true });
+  }
+
+  // Generate if not cached
+  db.get('SELECT content FROM lessons WHERE id = ?', [id], async (err, lesson) => {
+    if (err || !lesson) {
+      return res.status(404).json({ error: 'Lesson not found' });
+    }
+
+    try {
+      const response = await axios({
+        method: 'POST',
+        url: `https://api.elevenlabs.io/v1/text-to-speech/${ELEVENLABS_VOICE_ID}`,
+        headers: {
+          'Accept': 'audio/mpeg',
+          'Content-Type': 'application/json',
+          'xi-api-key': ELEVENLABS_API_KEY
+        },
+        data: {
+          text: lesson.content,
+          model_id: 'eleven_multilingual_v2',
+          voice_settings: {
+            stability: 0.5,
+            similarity_boost: 0.75,
+            style: 0.5,
+            use_speaker_boost: true
+          }
+        },
+        responseType: 'arraybuffer'
+      });
+
+      fs.writeFileSync(audioPath, response.data);
+      res.json({ audioUrl: `/audio/${cacheKey}.mp3`, cached: false });
+
+    } catch (error) {
+      console.error('❌ TTS error:', error.response?.data || error.message);
+      res.status(500).json({ error: 'Failed to generate audio' });
+    }
   });
 });
 
@@ -351,12 +386,12 @@ app.use((err, req, res, next) => {
 app.listen(PORT, () => {
   console.log(`🚀 Dora Backend running on http://localhost:${PORT}`);
   console.log(`❤️  Health check: http://localhost:${PORT}/health`);
+  console.log(`🎙️  ElevenLabs TTS: ${ELEVENLABS_API_KEY ? 'Configured' : 'Not configured'}`);
 });
 
 // Graceful shutdown
 process.on('SIGINT', () => {
   console.log('\n👋 Shutting down gracefully...');
-  if (bot) bot.stopPolling();
   db.close();
   process.exit(0);
 });

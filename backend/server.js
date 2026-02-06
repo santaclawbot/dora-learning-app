@@ -9,7 +9,7 @@ const jwt = require('jsonwebtoken');
 const axios = require('axios');
 
 const app = express();
-const PORT = process.env.BACKEND_PORT || 3001;
+const PORT = process.env.PORT || process.env.BACKEND_PORT || 3001;
 const JWT_SECRET = process.env.JWT_SECRET || 'dora-super-secret-key-2024';
 
 // Hardcoded users for MVP
@@ -121,8 +121,16 @@ Give yourself a big hug!`,
   console.log('📚 Lessons content updated');
 }
 
+// CORS Configuration
+const corsOptions = {
+  origin: process.env.CORS_ORIGINS 
+    ? process.env.CORS_ORIGINS.split(',') 
+    : '*',
+  credentials: true
+};
+
 // Middleware
-app.use(cors());
+app.use(cors(corsOptions));
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use('/audio', express.static(AUDIO_CACHE_DIR));

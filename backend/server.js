@@ -24,15 +24,132 @@ const ELEVENLABS_VOICE_ID = process.env.ELEVENLABS_VOICE_ID || 'EXAVITQu4vr4xnSD
 
 // Database connection
 const DB_PATH = process.env.DATABASE_URL || './data/dora.db';
+
+// Ensure data directory exists
+const DATA_DIR = path.dirname(DB_PATH);
+if (!fs.existsSync(DATA_DIR)) {
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+}
+
 const db = new sqlite3.Database(DB_PATH, (err) => {
   if (err) {
     console.error('❌ Database connection error:', err);
   } else {
     console.log('📦 Database connected');
-    // Update lessons with fun content
-    updateLessonsContent();
+    // Auto-initialize database on startup
+    initializeDatabase();
   }
 });
+
+// Initialize database schema and seed data
+function initializeDatabase() {
+  const schema = `
+    -- Users table
+    CREATE TABLE IF NOT EXISTS users (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      telegram_id TEXT UNIQUE,
+      email TEXT UNIQUE,
+      name TEXT,
+      password_hash TEXT,
+      profile_pic TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    -- Lessons table
+    CREATE TABLE IF NOT EXISTS lessons (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT NOT NULL,
+      description TEXT,
+      content TEXT,
+      difficulty TEXT DEFAULT 'Beginner',
+      duration_minutes INTEGER,
+      thumbnail_url TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    -- User lesson progress
+    CREATE TABLE IF NOT EXISTS user_lessons (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      lesson_id INTEGER NOT NULL,
+      status TEXT DEFAULT 'not_started',
+      progress_percent INTEGER DEFAULT 0,
+      score INTEGER,
+      completed_at DATETIME,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY(user_id) REFERENCES users(id),
+      FOREIGN KEY(lesson_id) REFERENCES lessons(id),
+      UNIQUE(user_id, lesson_id)
+    );
+
+    -- User responses to exercises
+    CREATE TABLE IF NOT EXISTS responses (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      lesson_id INTEGER NOT NULL,
+      question_id INTEGER,
+      answer TEXT,
+      is_correct BOOLEAN,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY(user_id) REFERENCES users(id),
+      FOREIGN KEY(lesson_id) REFERENCES lessons(id)
+    );
+
+    -- Telegram messages log
+    CREATE TABLE IF NOT EXISTS telegram_messages (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER,
+      message_text TEXT,
+      message_type TEXT,
+      response TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY(user_id) REFERENCES users(id)
+    );
+  `;
+
+  db.exec(schema, (err) => {
+    if (err) {
+      console.error('❌ Error initializing schema:', err);
+    } else {
+      console.log('✅ Database schema ready');
+      // Seed data and update content
+      seedAndUpdateLessons();
+    }
+  });
+}
+
+// Seed lessons if table is empty, then update content
+function seedAndUpdateLessons() {
+  db.get('SELECT COUNT(*) as count FROM lessons', (err, row) => {
+    if (err) {
+      console.error('❌ Error checking lessons:', err);
+      return;
+    }
+    
+    if (row && row.count === 0) {
+      console.log('📝 Seeding initial lessons...');
+      const seedLessons = [
+        { title: 'Hello! Meet Dora 🌟', description: 'Say hi to Dora and learn about your adventure!', difficulty: 'Easy', duration: 5 },
+        { title: 'Colors Are Everywhere! 🌈', description: 'Explore the rainbow with Dora!', difficulty: 'Easy', duration: 8 },
+        { title: 'Counting Fun! 🔢', description: 'Count to 10 with Dora!', difficulty: 'Easy', duration: 10 }
+      ];
+      
+      const stmt = db.prepare('INSERT INTO lessons (title, description, difficulty, duration_minutes) VALUES (?, ?, ?, ?)');
+      seedLessons.forEach(lesson => {
+        stmt.run(lesson.title, lesson.description, lesson.difficulty, lesson.duration);
+      });
+      stmt.finalize(() => {
+        console.log('✅ Lessons seeded');
+        updateLessonsContent();
+      });
+    } else {
+      console.log(`📚 Found ${row.count} lessons`);
+      updateLessonsContent();
+    }
+  });
+}
 
 // Create audio cache directory
 const AUDIO_CACHE_DIR = path.join(__dirname, 'audio-cache');

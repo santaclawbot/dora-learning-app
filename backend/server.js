@@ -209,6 +209,100 @@ if (!fs.existsSync(AUDIO_CACHE_DIR)) {
   fs.mkdirSync(AUDIO_CACHE_DIR, { recursive: true });
 }
 
+// Crypto for hashing TTS text
+const crypto = require('crypto');
+
+// Helper: Generate hash for text (for caching)
+function hashText(text) {
+  return crypto.createHash('md5').update(text).digest('hex').substring(0, 12);
+}
+
+// Helper: Generate TTS audio for Dora messages with caching
+async function generateDoraTTS(text) {
+  if (!text || !ELEVENLABS_API_KEY) {
+    return { success: false, audioUrl: null, error: 'TTS not configured' };
+  }
+
+  const textHash = hashText(text);
+  const cacheKey = `dora_msg_${textHash}`;
+  const audioPath = path.join(AUDIO_CACHE_DIR, `${cacheKey}.mp3`);
+
+  // Check cache first
+  if (fs.existsSync(audioPath)) {
+    console.log('🔊 Serving cached Dora audio:', cacheKey);
+    return { success: true, audioUrl: `/audio/${cacheKey}.mp3`, cached: true };
+  }
+
+  try {
+    console.log('🎙️ Generating Dora TTS for:', text.substring(0, 40) + '...');
+    
+    const response = await axios({
+      method: 'POST',
+      url: `https://api.elevenlabs.io/v1/text-to-speech/${ELEVENLABS_VOICE_ID}`,
+      headers: {
+        'Accept': 'audio/mpeg',
+        'Content-Type': 'application/json',
+        'xi-api-key': ELEVENLABS_API_KEY
+      },
+      data: {
+        text: text,
+        model_id: 'eleven_multilingual_v2',
+        voice_settings: {
+          stability: 0.5,
+          similarity_boost: 0.75,
+          style: 0.5,
+          use_speaker_boost: true
+        }
+      },
+      responseType: 'arraybuffer',
+      timeout: 15000 // 15 second timeout
+    });
+
+    // Save to cache
+    fs.writeFileSync(audioPath, response.data);
+    console.log('✅ Dora audio saved:', cacheKey);
+
+    return { success: true, audioUrl: `/audio/${cacheKey}.mp3`, cached: false };
+
+  } catch (error) {
+    const errMsg = error.response?.data?.detail || error.message;
+    console.error('⚠️ Dora TTS error (graceful fallback):', errMsg);
+    return { success: false, audioUrl: null, error: errMsg };
+  }
+}
+
+// Pre-cache greetings for known profiles
+const GREETING_TEMPLATES = {
+  'aiden': "Hi Aiden! 🌟 What would you like to learn about today?",
+  'marcus': "Hi Marcus! 🌟 What would you like to learn about today?"
+};
+const greetingAudioCache = {}; // profileId -> audioUrl
+
+async function preCacheGreetings() {
+  console.log('🎙️ Pre-caching Dora greetings...');
+  
+  for (const [profileId, greeting] of Object.entries(GREETING_TEMPLATES)) {
+    const result = await generateDoraTTS(greeting);
+    if (result.success) {
+      greetingAudioCache[profileId] = result.audioUrl;
+      console.log(`✅ Greeting cached for ${profileId}: ${result.cached ? 'already cached' : 'generated'}`);
+    } else {
+      console.log(`⚠️ Could not cache greeting for ${profileId}: ${result.error}`);
+      greetingAudioCache[profileId] = null;
+    }
+  }
+  
+  console.log('🎙️ Greeting cache complete');
+}
+
+// Get greeting for a profile
+function getGreetingForProfile(profileId, profileName) {
+  const greetingText = GREETING_TEMPLATES[profileId] || 
+    `Hi ${profileName || 'friend'}! 🌟 What would you like to learn about today?`;
+  const greetingAudioUrl = greetingAudioCache[profileId] || null;
+  return { text: greetingText, audioUrl: greetingAudioUrl };
+}
+
 function updateLessonsContent() {
   const lessons = [
     {
@@ -735,6 +829,9 @@ app.post('/api/ask-dora/new', authenticateToken, (req, res) => {
   const conversationId = generateId('conv_');
   const title = `Chat with ${profileName || 'Child'}`;
   
+  // Get pre-cached greeting
+  const greeting = getGreetingForProfile(profileId, profileName);
+  
   db.run(
     `INSERT INTO dora_conversations (id, profile_id, user_id, title) VALUES (?, ?, ?, ?)`,
     [conversationId, profileId, userId, title],
@@ -748,7 +845,11 @@ app.post('/api/ask-dora/new', authenticateToken, (req, res) => {
         success: true,
         conversationId,
         title,
-        createdAt: new Date().toISOString()
+        createdAt: new Date().toISOString(),
+        greeting: {
+          text: greeting.text,
+          audioUrl: greeting.audioUrl
+        }
       });
     }
   );
@@ -906,11 +1007,22 @@ app.post('/api/ask-dora/message', authenticateToken, async (req, res) => {
           [conversationId]
         );
         
+        // Generate TTS for Dora's response (non-blocking with graceful fallback)
+        let audioUrl = null;
+        try {
+          const ttsResult = await generateDoraTTS(responseText);
+          audioUrl = ttsResult.audioUrl; // Will be null if TTS failed
+        } catch (ttsError) {
+          console.error('⚠️ TTS generation failed, continuing without audio:', ttsError.message);
+          // audioUrl stays null - graceful degradation
+        }
+        
         res.json({
           success: true,
           response: {
             id: doraMsgId,
             text: responseText,
+            audioUrl: audioUrl,
             timestamp: new Date().toISOString()
           },
           conversationId,
@@ -950,6 +1062,13 @@ app.listen(PORT, () => {
   console.log(`🎙️  ElevenLabs TTS: ${ELEVENLABS_API_KEY ? 'Configured' : 'Not configured'}`);
   console.log(`🤖 Ask Dora: ${OPENCLAW_GATEWAY_URL ? `OpenClaw @ ${OPENCLAW_GATEWAY_URL}` : 'Claude direct only'}`);
   console.log(`🔄 Claude fallback: ${anthropic ? 'Ready' : 'Not configured (no API key)'}`);
+  
+  // Pre-cache greetings on startup (async, non-blocking)
+  if (ELEVENLABS_API_KEY) {
+    preCacheGreetings().catch(err => {
+      console.error('⚠️ Greeting pre-cache failed:', err.message);
+    });
+  }
 });
 
 // Graceful shutdown

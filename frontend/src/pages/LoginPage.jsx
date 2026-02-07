@@ -47,63 +47,82 @@ export default function LoginPage() {
         <p>Your Adventure Awaits!</p>
       </div>
 
-      <div className="user-picker">
-        <p className="picker-label">Who's learning today?</p>
-        <div className="user-buttons">
-          <button 
-            type="button"
-            className={`user-btn ${username === 'aiden' ? 'selected' : ''}`}
-            onClick={() => selectUser('aiden', 'aiden123')}
-          >
-            <span className="avatar">🦁</span>
-            <span className="name">Aiden</span>
-          </button>
-          <button 
-            type="button"
-            className={`user-btn ${username === 'marcus' ? 'selected' : ''}`}
-            onClick={() => selectUser('marcus', 'marcus123')}
-          >
-            <span className="avatar">🐻</span>
-            <span className="name">Marcus</span>
-          </button>
+      <div className="login-card">
+        {/* Quick Login Profiles */}
+        <div className="user-picker">
+          <p className="picker-label">⚡ Quick Login</p>
+          <div className="user-buttons">
+            <button 
+              type="button"
+              className={`user-btn ${username === 'aiden' ? 'selected' : ''}`}
+              onClick={() => selectUser('aiden', 'aiden123')}
+            >
+              <span className="avatar">🦁</span>
+              <span className="name">Aiden</span>
+            </button>
+            <button 
+              type="button"
+              className={`user-btn ${username === 'marcus' ? 'selected' : ''}`}
+              onClick={() => selectUser('marcus', 'marcus123')}
+            >
+              <span className="avatar">🐻</span>
+              <span className="name">Marcus</span>
+            </button>
+          </div>
         </div>
+
+        <div className="divider">
+          <span>or type your info</span>
+        </div>
+
+        {/* Login Form */}
+        <form onSubmit={handleLogin} className="login-form">
+          <div className="input-group">
+            <label htmlFor="username">👤 Username</label>
+            <input
+              id="username"
+              type="text"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              placeholder="Type your name..."
+              className="login-input"
+              required
+              autoComplete="username"
+            />
+          </div>
+
+          <div className="input-group">
+            <label htmlFor="password">🔐 Password</label>
+            <input
+              id="password"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Your secret code..."
+              className="login-input"
+              required
+              autoComplete="current-password"
+            />
+          </div>
+
+          {error && <div className="error-bubble">{error}</div>}
+
+          <button 
+            type="submit" 
+            disabled={loading || !username || !password} 
+            className="start-btn"
+          >
+            {loading ? (
+              <span className="loading-dots">Loading...</span>
+            ) : (
+              <>
+                <span>Let's Go!</span>
+                <span className="btn-emoji">🚀</span>
+              </>
+            )}
+          </button>
+        </form>
       </div>
-
-      {error && <div className="error-bubble">{error}</div>}
-
-      <form onSubmit={handleLogin} className="login-form">
-        <input
-          type="text"
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
-          placeholder="Type your name..."
-          className="hidden-input"
-          required
-        />
-        <input
-          type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          placeholder="Secret code..."
-          className="hidden-input"
-          required
-        />
-
-        <button 
-          type="submit" 
-          disabled={loading || !username} 
-          className="start-btn"
-        >
-          {loading ? (
-            <span className="loading-dots">Loading...</span>
-          ) : (
-            <>
-              <span>Let's Go!</span>
-              <span className="btn-emoji">🚀</span>
-            </>
-          )}
-        </button>
-      </form>
 
       <div className="login-footer">
         <p>✨ Learn • Play • Grow ✨</p>
@@ -151,21 +170,25 @@ export default function LoginPage() {
           font-weight: bold;
         }
 
-        .user-picker {
+        .login-card {
           background: white;
           border-radius: 30px;
-          padding: 25px;
+          padding: 30px;
           width: 100%;
-          max-width: 350px;
+          max-width: 380px;
           box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+        }
+
+        .user-picker {
+          margin-bottom: 20px;
         }
 
         .picker-label {
           text-align: center;
           color: #6B4875;
-          font-size: 1.3rem;
+          font-size: 1.1rem;
           font-weight: bold;
-          margin-bottom: 20px;
+          margin-bottom: 15px;
         }
 
         .user-buttons {
@@ -178,8 +201,8 @@ export default function LoginPage() {
           display: flex;
           flex-direction: column;
           align-items: center;
-          padding: 20px 30px;
-          border: 4px solid #eee;
+          padding: 15px 25px;
+          border: 3px solid #eee;
           border-radius: 20px;
           background: white;
           cursor: pointer;
@@ -194,27 +217,91 @@ export default function LoginPage() {
         .user-btn.selected {
           border-color: #FFD93D;
           background: #FFFDF0;
-          transform: scale(1.1);
+          transform: scale(1.08);
         }
 
         .user-btn .avatar {
-          font-size: 50px;
-          margin-bottom: 10px;
+          font-size: 40px;
+          margin-bottom: 8px;
         }
 
         .user-btn .name {
-          font-size: 1.2rem;
+          font-size: 1rem;
           font-weight: bold;
           color: #6B4875;
+        }
+
+        .divider {
+          display: flex;
+          align-items: center;
+          margin: 20px 0;
+        }
+
+        .divider::before,
+        .divider::after {
+          content: '';
+          flex: 1;
+          height: 2px;
+          background: linear-gradient(to right, transparent, #ddd, transparent);
+        }
+
+        .divider span {
+          padding: 0 15px;
+          color: #888;
+          font-size: 0.9rem;
+          white-space: nowrap;
+        }
+
+        .login-form {
+          display: flex;
+          flex-direction: column;
+          gap: 15px;
+        }
+
+        .input-group {
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+        }
+
+        .input-group label {
+          color: #6B4875;
+          font-weight: bold;
+          font-size: 1rem;
+          margin-left: 5px;
+        }
+
+        .login-input {
+          width: 100%;
+          padding: 15px 20px;
+          font-size: 1.1rem;
+          font-family: inherit;
+          border: 3px solid #ddd;
+          border-radius: 15px;
+          background: #f9f9f9;
+          color: #333;
+          transition: all 0.3s ease;
+          box-sizing: border-box;
+        }
+
+        .login-input:focus {
+          outline: none;
+          border-color: #88CAAF;
+          background: white;
+          box-shadow: 0 0 0 4px rgba(136, 202, 175, 0.2);
+        }
+
+        .login-input::placeholder {
+          color: #aaa;
         }
 
         .error-bubble {
           background: #FF8B66;
           color: white;
-          padding: 15px 25px;
-          border-radius: 20px;
-          margin: 20px 0;
+          padding: 12px 20px;
+          border-radius: 15px;
           font-weight: bold;
+          text-align: center;
           animation: shake 0.5s;
         }
 
@@ -224,23 +311,12 @@ export default function LoginPage() {
           75% { transform: translateX(10px); }
         }
 
-        .login-form {
-          width: 100%;
-          max-width: 350px;
-          margin-top: 20px;
-        }
-
-        .hidden-input {
-          position: absolute;
-          opacity: 0;
-          pointer-events: none;
-        }
-
         .start-btn {
           width: 100%;
-          padding: 20px 40px;
-          font-size: 1.5rem;
+          padding: 18px 40px;
+          font-size: 1.4rem;
           font-weight: bold;
+          font-family: inherit;
           color: white;
           background: linear-gradient(135deg, #FFD93D 0%, #FF8B66 100%);
           border: none;
@@ -252,6 +328,7 @@ export default function LoginPage() {
           gap: 10px;
           box-shadow: 0 8px 20px rgba(255, 139, 102, 0.4);
           transition: all 0.3s ease;
+          margin-top: 10px;
         }
 
         .start-btn:hover:not(:disabled) {
@@ -260,12 +337,12 @@ export default function LoginPage() {
         }
 
         .start-btn:disabled {
-          opacity: 0.6;
+          opacity: 0.5;
           cursor: not-allowed;
         }
 
         .btn-emoji {
-          font-size: 1.8rem;
+          font-size: 1.6rem;
         }
 
         .loading-dots {
@@ -278,7 +355,7 @@ export default function LoginPage() {
         }
 
         .login-footer {
-          margin-top: 40px;
+          margin-top: 30px;
           text-align: center;
         }
 
@@ -286,6 +363,21 @@ export default function LoginPage() {
           color: white;
           font-size: 1.1rem;
           opacity: 0.9;
+        }
+
+        /* Mobile adjustments */
+        @media (max-width: 400px) {
+          .login-card {
+            padding: 25px 20px;
+          }
+          
+          .user-btn {
+            padding: 12px 18px;
+          }
+          
+          .user-btn .avatar {
+            font-size: 32px;
+          }
         }
       `}</style>
     </div>

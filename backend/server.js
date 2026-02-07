@@ -35,9 +35,14 @@ const USERS = {
 const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY || 'sk_77718b72529589bb7f4b81b6f6e875436b8238093c3f9009';
 const ELEVENLABS_VOICE_ID = process.env.ELEVENLABS_VOICE_ID || 'EXAVITQu4vr4xnSDxMaL'; // Bella - warm female voice
 
-// Anthropic/Claude config for Ask Dora
+// Anthropic/Claude config for Ask Dora (fallback)
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 const anthropic = ANTHROPIC_API_KEY ? new Anthropic({ apiKey: ANTHROPIC_API_KEY }) : null;
+
+// OpenClaw config (primary path for Ask Dora)
+const OPENCLAW_GATEWAY_URL = process.env.OPENCLAW_GATEWAY_URL;
+const OPENCLAW_AGENT_ID = process.env.OPENCLAW_AGENT_ID || 'dora';
+const OPENCLAW_TIMEOUT_MS = parseInt(process.env.OPENCLAW_TIMEOUT_MS) || 5000;
 
 // Rate limiting for Ask Dora (20 messages per hour per profile)
 const RATE_LIMIT_MAX = 20;
@@ -625,6 +630,99 @@ function saveMessage(id, conversationId, role, content) {
   });
 }
 
+// Helper: Call OpenClaw Dora agent
+async function callOpenClawDora(message, profileName, profileAge, conversationHistory) {
+  if (!OPENCLAW_GATEWAY_URL) {
+    return { success: false, error: 'OpenClaw not configured' };
+  }
+  
+  try {
+    // Build context message for Dora
+    const contextMessage = [
+      `[Child: ${profileName || 'friend'}, Age: ${profileAge || 5}]`,
+      message
+    ].join('\n');
+    
+    // Format conversation history for context
+    const historyContext = conversationHistory.slice(-6).map(m => 
+      `${m.role === 'user' ? 'Child' : 'Dora'}: ${m.content}`
+    ).join('\n');
+    
+    const fullMessage = historyContext 
+      ? `Previous conversation:\n${historyContext}\n\nNew question: ${contextMessage}`
+      : contextMessage;
+    
+    // Call OpenClaw gateway
+    // Note: This assumes OpenClaw exposes an HTTP API for agent messaging
+    // Adjust endpoint based on actual OpenClaw API structure
+    const response = await axios({
+      method: 'POST',
+      url: `${OPENCLAW_GATEWAY_URL}/api/agents/${OPENCLAW_AGENT_ID}/message`,
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      data: {
+        message: fullMessage,
+        context: {
+          profileName,
+          profileAge,
+          source: 'dora-learning-app'
+        }
+      },
+      timeout: OPENCLAW_TIMEOUT_MS
+    });
+    
+    if (response.data && response.data.response) {
+      return { success: true, text: response.data.response };
+    }
+    
+    return { success: false, error: 'Invalid response from OpenClaw' };
+    
+  } catch (error) {
+    const errorMsg = error.code === 'ECONNABORTED' 
+      ? 'OpenClaw timeout' 
+      : error.message;
+    console.log(`⚠️  OpenClaw unavailable (${errorMsg}), falling back to Claude`);
+    return { success: false, error: errorMsg };
+  }
+}
+
+// Helper: Call Claude directly (fallback)
+async function callClaudeDirect(message, profileName, profileAge, conversationHistory) {
+  if (!anthropic) {
+    return { 
+      success: false, 
+      text: `Hi ${profileName || 'friend'}! 🌟 I'm having a little trouble right now, but I'll be back soon! Try asking me again later, okay? 💫`,
+      error: 'No API key'
+    };
+  }
+  
+  try {
+    const systemPrompt = buildDoraSystemPrompt(profileName, profileAge);
+    const claudeMessages = conversationHistory.map(m => ({
+      role: m.role === 'user' ? 'user' : 'assistant',
+      content: m.content
+    }));
+    
+    const response = await anthropic.messages.create({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 300,
+      system: systemPrompt,
+      messages: claudeMessages
+    });
+    
+    return { success: true, text: response.content[0].text };
+    
+  } catch (error) {
+    console.error('❌ Claude API error:', error.message);
+    return { 
+      success: false, 
+      text: `Hi ${profileName || 'friend'}! 🌟 Oops, I got a little confused! Can you ask me again? 💫`,
+      error: error.message 
+    };
+  }
+}
+
 // POST /api/ask-dora/new - Start a new conversation
 app.post('/api/ask-dora/new', authenticateToken, (req, res) => {
   const { profileId, profileName } = req.body;
@@ -763,31 +861,39 @@ app.post('/api/ask-dora/message', authenticateToken, async (req, res) => {
         // Get conversation history for context
         const history = await getConversationMessages(conversationId);
         
-        // Build messages for Claude
-        const claudeMessages = history.map(m => ({
-          role: m.role === 'user' ? 'user' : 'assistant',
-          content: m.content
-        }));
-        
         let responseText;
-        let source = 'claude-direct';
+        let source;
         
-        if (anthropic) {
-          // Call Claude API
-          const systemPrompt = buildDoraSystemPrompt(profileName, profileAge);
+        // M2: Try OpenClaw first, fall back to Claude direct
+        if (OPENCLAW_GATEWAY_URL) {
+          console.log('🔗 Trying OpenClaw Dora agent...');
+          const openclawResult = await callOpenClawDora(
+            message.trim(), 
+            profileName, 
+            profileAge, 
+            history
+          );
           
-          const response = await anthropic.messages.create({
-            model: 'claude-sonnet-4-20250514',
-            max_tokens: 300,
-            system: systemPrompt,
-            messages: claudeMessages
-          });
+          if (openclawResult.success) {
+            responseText = openclawResult.text;
+            source = 'openclaw';
+            console.log('✅ Response from OpenClaw Dora');
+          }
+        }
+        
+        // Fallback to Claude direct if OpenClaw unavailable or failed
+        if (!responseText) {
+          console.log('🤖 Using Claude direct (fallback)...');
+          const claudeResult = await callClaudeDirect(
+            message.trim(),
+            profileName,
+            profileAge,
+            history
+          );
           
-          responseText = response.content[0].text;
-        } else {
-          // Fallback response if no API key
-          source = 'fallback';
-          responseText = `Hi ${profileName || 'friend'}! 🌟 I'm having a little trouble right now, but I'll be back soon! Try asking me again later, okay? 💫`;
+          responseText = claudeResult.text;
+          source = 'claude-fallback';
+          console.log('✅ Response from Claude direct');
         }
         
         // Save Dora's response
@@ -842,6 +948,8 @@ app.listen(PORT, () => {
   console.log(`🚀 Dora Backend running on http://localhost:${PORT}`);
   console.log(`❤️  Health check: http://localhost:${PORT}/health`);
   console.log(`🎙️  ElevenLabs TTS: ${ELEVENLABS_API_KEY ? 'Configured' : 'Not configured'}`);
+  console.log(`🤖 Ask Dora: ${OPENCLAW_GATEWAY_URL ? `OpenClaw @ ${OPENCLAW_GATEWAY_URL}` : 'Claude direct only'}`);
+  console.log(`🔄 Claude fallback: ${anthropic ? 'Ready' : 'Not configured (no API key)'}`);
 });
 
 // Graceful shutdown

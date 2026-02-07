@@ -7,6 +7,7 @@ const fs = require('fs');
 const sqlite3 = require('sqlite3').verbose();
 const jwt = require('jsonwebtoken');
 const axios = require('axios');
+const Anthropic = require('@anthropic-ai/sdk');
 
 const app = express();
 const PORT = process.env.PORT || process.env.BACKEND_PORT || 3001;
@@ -33,6 +34,15 @@ const USERS = {
 // ElevenLabs config
 const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY || 'sk_77718b72529589bb7f4b81b6f6e875436b8238093c3f9009';
 const ELEVENLABS_VOICE_ID = process.env.ELEVENLABS_VOICE_ID || 'EXAVITQu4vr4xnSDxMaL'; // Bella - warm female voice
+
+// Anthropic/Claude config for Ask Dora
+const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
+const anthropic = ANTHROPIC_API_KEY ? new Anthropic({ apiKey: ANTHROPIC_API_KEY }) : null;
+
+// Rate limiting for Ask Dora (20 messages per hour per profile)
+const RATE_LIMIT_MAX = 20;
+const RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000; // 1 hour
+const rateLimitStore = new Map(); // profileId -> { count, resetAt }
 
 // Database connection
 const DB_PATH = process.env.DATABASE_URL || './data/dora.db';
@@ -119,6 +129,31 @@ function initializeDatabase() {
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY(user_id) REFERENCES users(id)
     );
+
+    -- Ask Dora conversations
+    CREATE TABLE IF NOT EXISTS dora_conversations (
+      id TEXT PRIMARY KEY,
+      profile_id TEXT NOT NULL,
+      user_id INTEGER NOT NULL,
+      title TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY(user_id) REFERENCES users(id)
+    );
+
+    -- Ask Dora messages
+    CREATE TABLE IF NOT EXISTS dora_messages (
+      id TEXT PRIMARY KEY,
+      conversation_id TEXT NOT NULL,
+      role TEXT NOT NULL,
+      content TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY(conversation_id) REFERENCES dora_conversations(id)
+    );
+
+    -- Index for faster queries
+    CREATE INDEX IF NOT EXISTS idx_dora_messages_conv ON dora_messages(conversation_id);
+    CREATE INDEX IF NOT EXISTS idx_dora_conversations_profile ON dora_conversations(profile_id);
   `;
 
   db.exec(schema, (err) => {
@@ -516,6 +551,279 @@ app.get('/api/lessons/:id/audio', authenticateToken, async (req, res) => {
       res.status(500).json({ error: 'Failed to generate audio' });
     }
   });
+});
+
+// ========== ASK DORA ROUTES ==========
+
+// Helper: Generate unique ID
+function generateId(prefix = '') {
+  return prefix + Date.now().toString(36) + Math.random().toString(36).substr(2, 9);
+}
+
+// Helper: Check rate limit
+function checkRateLimit(profileId) {
+  const now = Date.now();
+  let record = rateLimitStore.get(profileId);
+  
+  if (!record || now >= record.resetAt) {
+    record = { count: 0, resetAt: now + RATE_LIMIT_WINDOW_MS };
+    rateLimitStore.set(profileId, record);
+  }
+  
+  if (record.count >= RATE_LIMIT_MAX) {
+    const minutesLeft = Math.ceil((record.resetAt - now) / 60000);
+    return { allowed: false, minutesLeft };
+  }
+  
+  record.count++;
+  return { allowed: true, remaining: RATE_LIMIT_MAX - record.count };
+}
+
+// Helper: Build Dora system prompt
+function buildDoraSystemPrompt(profileName, profileAge) {
+  return `You are Dora, a friendly and enthusiastic AI teacher for young children (ages 3-8). 
+
+Rules:
+- Use simple words a 5-year-old understands
+- Keep responses short (2-4 sentences max)
+- Be warm, encouraging, and patient
+- Use lots of emojis! 🌟⭐💫
+- Always be positive and supportive
+- If you don't know something, say "Let's find out together!"
+- Never discuss anything inappropriate for children
+- Redirect scary/violent topics to something fun
+
+Child's name: ${profileName || 'friend'}
+Child's age: ${profileAge || 5}`;
+}
+
+// Helper: Get conversation history for Claude context
+function getConversationMessages(conversationId) {
+  return new Promise((resolve, reject) => {
+    db.all(
+      `SELECT role, content FROM dora_messages WHERE conversation_id = ? ORDER BY created_at ASC`,
+      [conversationId],
+      (err, rows) => {
+        if (err) reject(err);
+        else resolve(rows || []);
+      }
+    );
+  });
+}
+
+// Helper: Save message to database
+function saveMessage(id, conversationId, role, content) {
+  return new Promise((resolve, reject) => {
+    db.run(
+      `INSERT INTO dora_messages (id, conversation_id, role, content) VALUES (?, ?, ?, ?)`,
+      [id, conversationId, role, content],
+      (err) => {
+        if (err) reject(err);
+        else resolve();
+      }
+    );
+  });
+}
+
+// POST /api/ask-dora/new - Start a new conversation
+app.post('/api/ask-dora/new', authenticateToken, (req, res) => {
+  const { profileId, profileName } = req.body;
+  const userId = req.user.id;
+  
+  if (!profileId) {
+    return res.status(400).json({ success: false, error: 'profileId is required' });
+  }
+  
+  const conversationId = generateId('conv_');
+  const title = `Chat with ${profileName || 'Child'}`;
+  
+  db.run(
+    `INSERT INTO dora_conversations (id, profile_id, user_id, title) VALUES (?, ?, ?, ?)`,
+    [conversationId, profileId, userId, title],
+    (err) => {
+      if (err) {
+        console.error('❌ Error creating conversation:', err);
+        return res.status(500).json({ success: false, error: 'Failed to create conversation' });
+      }
+      
+      res.json({
+        success: true,
+        conversationId,
+        title,
+        createdAt: new Date().toISOString()
+      });
+    }
+  );
+});
+
+// GET /api/ask-dora/history - Get conversation history
+app.get('/api/ask-dora/history', authenticateToken, (req, res) => {
+  const { conversationId, profileId } = req.query;
+  const userId = req.user.id;
+  
+  if (conversationId) {
+    // Get messages for a specific conversation
+    db.get(
+      `SELECT * FROM dora_conversations WHERE id = ? AND user_id = ?`,
+      [conversationId, userId],
+      (err, conv) => {
+        if (err) {
+          return res.status(500).json({ success: false, error: 'Database error' });
+        }
+        if (!conv) {
+          return res.status(404).json({ success: false, error: 'Conversation not found' });
+        }
+        
+        db.all(
+          `SELECT id, role, content, created_at as timestamp FROM dora_messages WHERE conversation_id = ? ORDER BY created_at ASC`,
+          [conversationId],
+          (err, messages) => {
+            if (err) {
+              return res.status(500).json({ success: false, error: 'Database error' });
+            }
+            res.json({
+              success: true,
+              conversation: {
+                id: conv.id,
+                title: conv.title,
+                profileId: conv.profile_id,
+                createdAt: conv.created_at,
+                updatedAt: conv.updated_at
+              },
+              messages: messages || []
+            });
+          }
+        );
+      }
+    );
+  } else if (profileId) {
+    // Get all conversations for a profile
+    db.all(
+      `SELECT c.id, c.title, c.created_at, c.updated_at,
+              (SELECT COUNT(*) FROM dora_messages WHERE conversation_id = c.id) as messageCount
+       FROM dora_conversations c 
+       WHERE c.profile_id = ? AND c.user_id = ?
+       ORDER BY c.updated_at DESC`,
+      [profileId, userId],
+      (err, conversations) => {
+        if (err) {
+          return res.status(500).json({ success: false, error: 'Database error' });
+        }
+        res.json({
+          success: true,
+          conversations: conversations || []
+        });
+      }
+    );
+  } else {
+    return res.status(400).json({ success: false, error: 'conversationId or profileId is required' });
+  }
+});
+
+// POST /api/ask-dora/message - Send a message to Dora
+app.post('/api/ask-dora/message', authenticateToken, async (req, res) => {
+  const { conversationId, message, profileId, profileName, profileAge } = req.body;
+  const userId = req.user.id;
+  
+  if (!message || !message.trim()) {
+    return res.status(400).json({ success: false, error: 'message is required' });
+  }
+  
+  if (!conversationId) {
+    return res.status(400).json({ success: false, error: 'conversationId is required' });
+  }
+  
+  // Check rate limit
+  const rateCheck = checkRateLimit(profileId || `user_${userId}`);
+  if (!rateCheck.allowed) {
+    return res.status(429).json({
+      success: false,
+      error: `Too many messages! Please wait ${rateCheck.minutesLeft} minutes before asking Dora more questions. 🌟`,
+      retryAfterMinutes: rateCheck.minutesLeft
+    });
+  }
+  
+  // Verify conversation exists and belongs to user
+  db.get(
+    `SELECT * FROM dora_conversations WHERE id = ? AND user_id = ?`,
+    [conversationId, userId],
+    async (err, conv) => {
+      if (err) {
+        return res.status(500).json({ success: false, error: 'Database error' });
+      }
+      if (!conv) {
+        return res.status(404).json({ success: false, error: 'Conversation not found' });
+      }
+      
+      try {
+        // Save user message
+        const userMsgId = generateId('msg_');
+        await saveMessage(userMsgId, conversationId, 'user', message.trim());
+        
+        // Get conversation history for context
+        const history = await getConversationMessages(conversationId);
+        
+        // Build messages for Claude
+        const claudeMessages = history.map(m => ({
+          role: m.role === 'user' ? 'user' : 'assistant',
+          content: m.content
+        }));
+        
+        let responseText;
+        let source = 'claude-direct';
+        
+        if (anthropic) {
+          // Call Claude API
+          const systemPrompt = buildDoraSystemPrompt(profileName, profileAge);
+          
+          const response = await anthropic.messages.create({
+            model: 'claude-sonnet-4-20250514',
+            max_tokens: 300,
+            system: systemPrompt,
+            messages: claudeMessages
+          });
+          
+          responseText = response.content[0].text;
+        } else {
+          // Fallback response if no API key
+          source = 'fallback';
+          responseText = `Hi ${profileName || 'friend'}! 🌟 I'm having a little trouble right now, but I'll be back soon! Try asking me again later, okay? 💫`;
+        }
+        
+        // Save Dora's response
+        const doraMsgId = generateId('msg_');
+        await saveMessage(doraMsgId, conversationId, 'assistant', responseText);
+        
+        // Update conversation timestamp
+        db.run(
+          `UPDATE dora_conversations SET updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+          [conversationId]
+        );
+        
+        res.json({
+          success: true,
+          response: {
+            id: doraMsgId,
+            text: responseText,
+            timestamp: new Date().toISOString()
+          },
+          conversationId,
+          source,
+          rateLimit: {
+            remaining: rateCheck.remaining,
+            limit: RATE_LIMIT_MAX
+          }
+        });
+        
+      } catch (error) {
+        console.error('❌ Ask Dora error:', error);
+        res.status(500).json({
+          success: false,
+          error: 'Oops! Something went wrong. Let\'s try again! 🌈'
+        });
+      }
+    }
+  );
 });
 
 // 404 handler

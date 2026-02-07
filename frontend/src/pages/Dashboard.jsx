@@ -12,10 +12,19 @@ export default function Dashboard() {
 
   useEffect(() => {
     const storedUser = localStorage.getItem('user')
+    const selectedProfile = localStorage.getItem('selectedProfile')
+    
     if (!storedUser) {
       navigate('/login')
       return
     }
+    
+    // Check if a profile is selected
+    if (!selectedProfile) {
+      navigate('/profile-select')
+      return
+    }
+    
     setUser(JSON.parse(storedUser))
     fetchLessons()
   }, [navigate])
@@ -34,7 +43,13 @@ export default function Dashboard() {
   const handleLogout = () => {
     localStorage.removeItem('token')
     localStorage.removeItem('user')
+    localStorage.removeItem('selectedProfile')
     navigate('/login')
+  }
+
+  const handleSwitchProfile = () => {
+    localStorage.removeItem('selectedProfile')
+    navigate('/profile-select')
   }
 
   const getLessonEmoji = (index) => {
@@ -54,9 +69,14 @@ export default function Dashboard() {
           <span className="user-avatar">{user?.avatar || '🌟'}</span>
           <span className="user-greeting">Hi, {user?.name}!</span>
         </div>
-        <button onClick={handleLogout} className="logout-btn">
-          👋
-        </button>
+        <div className="header-actions">
+          <button onClick={handleSwitchProfile} className="switch-btn" title="Switch Profile">
+            🔄
+          </button>
+          <button onClick={handleLogout} className="logout-btn" title="Sign Out">
+            👋
+          </button>
+        </div>
       </header>
 
       <main className="dashboard-main">
@@ -155,19 +175,25 @@ export default function Dashboard() {
           text-shadow: 2px 2px 0 rgba(0,0,0,0.2);
         }
 
-        .logout-btn {
-          font-size: 30px;
+        .header-actions {
+          display: flex;
+          gap: 10px;
+        }
+
+        .switch-btn, .logout-btn {
+          font-size: 26px;
           background: rgba(255,255,255,0.2);
           border: none;
           border-radius: 50%;
-          width: 50px;
-          height: 50px;
+          width: 48px;
+          height: 48px;
           cursor: pointer;
-          transition: transform 0.2s;
+          transition: all 0.2s;
         }
 
-        .logout-btn:hover {
+        .switch-btn:hover, .logout-btn:hover {
           transform: scale(1.1);
+          background: rgba(255,255,255,0.3);
         }
 
         .dashboard-main {

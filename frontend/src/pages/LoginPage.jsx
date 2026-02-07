@@ -25,18 +25,16 @@ export default function LoginPage() {
       if (response.data.token) {
         localStorage.setItem('token', response.data.token)
         localStorage.setItem('user', JSON.stringify(response.data.user))
-        navigate('/dashboard')
+        // Clear any previously selected profile
+        localStorage.removeItem('selectedProfile')
+        // Redirect to profile selection
+        navigate('/profile-select')
       }
     } catch (err) {
       setError(err.response?.data?.error || 'Oops! Something went wrong. Try again!')
     } finally {
       setLoading(false)
     }
-  }
-
-  const selectUser = (user, pass) => {
-    setUsername(user)
-    setPassword(pass)
   }
 
   return (
@@ -48,31 +46,9 @@ export default function LoginPage() {
       </div>
 
       <div className="login-card">
-        {/* Quick Login Profiles */}
-        <div className="user-picker">
-          <p className="picker-label">⚡ Quick Login</p>
-          <div className="user-buttons">
-            <button 
-              type="button"
-              className={`user-btn ${username === 'aiden' ? 'selected' : ''}`}
-              onClick={() => selectUser('aiden', 'aiden123')}
-            >
-              <span className="avatar">🦁</span>
-              <span className="name">Aiden</span>
-            </button>
-            <button 
-              type="button"
-              className={`user-btn ${username === 'marcus' ? 'selected' : ''}`}
-              onClick={() => selectUser('marcus', 'marcus123')}
-            >
-              <span className="avatar">🐻</span>
-              <span className="name">Marcus</span>
-            </button>
-          </div>
-        </div>
-
-        <div className="divider">
-          <span>or type your info</span>
+        <div className="welcome-text">
+          <span className="wave">👋</span>
+          <p>Welcome, Parent!</p>
         </div>
 
         {/* Login Form */}
@@ -84,7 +60,7 @@ export default function LoginPage() {
               type="text"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              placeholder="Type your name..."
+              placeholder="Enter your username..."
               className="login-input"
               required
               autoComplete="username"
@@ -98,7 +74,7 @@ export default function LoginPage() {
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="Your secret code..."
+              placeholder="Enter your password..."
               className="login-input"
               required
               autoComplete="current-password"
@@ -113,15 +89,19 @@ export default function LoginPage() {
             className="start-btn"
           >
             {loading ? (
-              <span className="loading-dots">Loading...</span>
+              <span className="loading-dots">Signing in...</span>
             ) : (
               <>
-                <span>Let's Go!</span>
+                <span>Sign In</span>
                 <span className="btn-emoji">🚀</span>
               </>
             )}
           </button>
         </form>
+
+        <div className="demo-hint">
+          <p>🔑 Demo: <strong>parent</strong> / <strong>family123</strong></p>
+        </div>
       </div>
 
       <div className="login-footer">
@@ -179,77 +159,22 @@ export default function LoginPage() {
           box-shadow: 0 10px 40px rgba(0,0,0,0.2);
         }
 
-        .user-picker {
-          margin-bottom: 20px;
-        }
-
-        .picker-label {
+        .welcome-text {
           text-align: center;
-          color: #6B4875;
-          font-size: 1.1rem;
-          font-weight: bold;
-          margin-bottom: 15px;
+          margin-bottom: 25px;
         }
 
-        .user-buttons {
-          display: flex;
-          gap: 15px;
-          justify-content: center;
-        }
-
-        .user-btn {
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          padding: 15px 25px;
-          border: 3px solid #eee;
-          border-radius: 20px;
-          background: white;
-          cursor: pointer;
-          transition: all 0.3s ease;
-        }
-
-        .user-btn:hover {
-          transform: scale(1.05);
-          border-color: #88CAAF;
-        }
-
-        .user-btn.selected {
-          border-color: #FFD93D;
-          background: #FFFDF0;
-          transform: scale(1.08);
-        }
-
-        .user-btn .avatar {
+        .welcome-text .wave {
           font-size: 40px;
-          margin-bottom: 8px;
+          display: block;
+          margin-bottom: 10px;
         }
 
-        .user-btn .name {
-          font-size: 1rem;
-          font-weight: bold;
+        .welcome-text p {
           color: #6B4875;
-        }
-
-        .divider {
-          display: flex;
-          align-items: center;
-          margin: 20px 0;
-        }
-
-        .divider::before,
-        .divider::after {
-          content: '';
-          flex: 1;
-          height: 2px;
-          background: linear-gradient(to right, transparent, #ddd, transparent);
-        }
-
-        .divider span {
-          padding: 0 15px;
-          color: #888;
-          font-size: 0.9rem;
-          white-space: nowrap;
+          font-size: 1.3rem;
+          font-weight: bold;
+          margin: 0;
         }
 
         .login-form {
@@ -354,6 +279,20 @@ export default function LoginPage() {
           50% { opacity: 0.5; }
         }
 
+        .demo-hint {
+          margin-top: 20px;
+          padding: 12px;
+          background: #f0f7f4;
+          border-radius: 12px;
+          text-align: center;
+        }
+
+        .demo-hint p {
+          margin: 0;
+          color: #6B4875;
+          font-size: 0.9rem;
+        }
+
         .login-footer {
           margin-top: 30px;
           text-align: center;
@@ -369,14 +308,6 @@ export default function LoginPage() {
         @media (max-width: 400px) {
           .login-card {
             padding: 25px 20px;
-          }
-          
-          .user-btn {
-            padding: 12px 18px;
-          }
-          
-          .user-btn .avatar {
-            font-size: 32px;
           }
         }
       `}</style>

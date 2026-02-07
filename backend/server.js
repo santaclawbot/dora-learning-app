@@ -12,10 +12,22 @@ const app = express();
 const PORT = process.env.PORT || process.env.BACKEND_PORT || 3001;
 const JWT_SECRET = process.env.JWT_SECRET || 'dora-super-secret-key-2024';
 
-// Hardcoded users for MVP
+// Hardcoded users for MVP - Parent account with child profiles
 const USERS = {
-  'aiden': { id: 1, username: 'aiden', password: 'aiden123', name: 'Aiden', avatar: '🦁' },
-  'marcus': { id: 2, username: 'marcus', password: 'marcus123', name: 'Marcus', avatar: '🐻' }
+  'parent': { 
+    id: 1, 
+    username: 'parent', 
+    password: 'family123', 
+    name: 'Parent', 
+    avatar: '👨‍👩‍👧‍👦',
+    profiles: [
+      { id: 'aiden', name: 'Aiden', avatar: '🦁' },
+      { id: 'marcus', name: 'Marcus', avatar: '🐻' }
+    ]
+  },
+  // Keep old users for backwards compatibility
+  'aiden': { id: 2, username: 'aiden', password: 'aiden123', name: 'Aiden', avatar: '🦁', profiles: [{ id: 'aiden', name: 'Aiden', avatar: '🦁' }] },
+  'marcus': { id: 3, username: 'marcus', password: 'marcus123', name: 'Marcus', avatar: '🐻', profiles: [{ id: 'marcus', name: 'Marcus', avatar: '🐻' }] }
 };
 
 // ElevenLabs config
@@ -306,9 +318,19 @@ app.post('/api/auth/login', (req, res) => {
       id: user.id,
       username: user.username,
       name: user.name,
-      avatar: user.avatar
+      avatar: user.avatar,
+      profiles: user.profiles || []
     }
   });
+});
+
+// Get available profiles for logged-in user
+app.get('/api/profiles', authenticateToken, (req, res) => {
+  const user = USERS[req.user.username];
+  if (!user) {
+    return res.status(404).json({ error: 'User not found' });
+  }
+  res.json({ profiles: user.profiles || [] });
 });
 
 app.get('/api/auth/me', authenticateToken, (req, res) => {

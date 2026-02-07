@@ -84,6 +84,20 @@ export default function Dashboard() {
           <h1>What do you want to learn today? 🎓</h1>
         </section>
 
+        {/* Ask Dora Feature Card */}
+        <section className="feature-section">
+          <Link to="/ask-dora" className="ask-dora-card">
+            <div className="ask-dora-content">
+              <span className="ask-dora-avatar">🦊</span>
+              <div className="ask-dora-text">
+                <h2>Ask Dora!</h2>
+                <p>Got questions? I love to help!</p>
+              </div>
+            </div>
+            <div className="ask-dora-sparkles">✨</div>
+          </Link>
+        </section>
+
         <section className="lessons-section">
           {loading ? (
             <div className="loading-state">
@@ -206,6 +220,88 @@ export default function Dashboard() {
           text-align: center;
           margin-bottom: 25px;
           text-shadow: 2px 2px 0 rgba(0,0,0,0.2);
+        }
+
+        /* Ask Dora Feature Card */
+        .feature-section {
+          margin-bottom: 25px;
+        }
+
+        .ask-dora-card {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          background: linear-gradient(135deg, #FF9A56 0%, #FFCD67 100%);
+          padding: 20px 25px;
+          border-radius: 25px;
+          text-decoration: none;
+          box-shadow: 0 8px 30px rgba(255,154,86,0.4);
+          transition: all 0.3s ease;
+          position: relative;
+          overflow: hidden;
+        }
+
+        .ask-dora-card::before {
+          content: '';
+          position: absolute;
+          top: -50%;
+          right: -50%;
+          width: 100%;
+          height: 100%;
+          background: radial-gradient(circle, rgba(255,255,255,0.3) 0%, transparent 70%);
+          pointer-events: none;
+        }
+
+        .ask-dora-card:hover {
+          transform: translateY(-5px) scale(1.02);
+          box-shadow: 0 15px 40px rgba(255,154,86,0.5);
+        }
+
+        .ask-dora-content {
+          display: flex;
+          align-items: center;
+          gap: 15px;
+        }
+
+        .ask-dora-avatar {
+          font-size: 55px;
+          background: white;
+          border-radius: 50%;
+          width: 75px;
+          height: 75px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          box-shadow: 0 4px 15px rgba(0,0,0,0.15);
+          animation: doraWiggle 2s ease-in-out infinite;
+        }
+
+        @keyframes doraWiggle {
+          0%, 100% { transform: rotate(-3deg); }
+          50% { transform: rotate(3deg); }
+        }
+
+        .ask-dora-text h2 {
+          color: white;
+          font-size: 1.6rem;
+          margin: 0 0 5px 0;
+          text-shadow: 2px 2px 0 rgba(0,0,0,0.15);
+        }
+
+        .ask-dora-text p {
+          color: rgba(255,255,255,0.95);
+          font-size: 1.1rem;
+          margin: 0;
+        }
+
+        .ask-dora-sparkles {
+          font-size: 35px;
+          animation: sparkle 1.5s ease-in-out infinite;
+        }
+
+        @keyframes sparkle {
+          0%, 100% { transform: scale(1) rotate(0deg); opacity: 1; }
+          50% { transform: scale(1.2) rotate(15deg); opacity: 0.8; }
         }
 
         .lessons-grid {

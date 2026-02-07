@@ -3,6 +3,7 @@ import LoginPage from './pages/LoginPage'
 import ProfileSelectPage from './pages/ProfileSelectPage'
 import Dashboard from './pages/Dashboard'
 import LessonPage from './pages/LessonPage'
+import AskDora from './pages/AskDora'
 
 function App() {
   return (
@@ -12,6 +13,7 @@ function App() {
         <Route path="/profile-select" element={<ProfileSelectPage />} />
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/lesson/:id" element={<LessonPage />} />
+        <Route path="/ask-dora" element={<AskDora />} />
         <Route path="/" element={<Navigate to="/login" replace />} />
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>

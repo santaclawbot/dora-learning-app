@@ -1,5 +1,9 @@
 # Dora Learning App 🚀
 
+[![CI/CD Pipeline](https://github.com/santaclawbot/dora-learning-app/actions/workflows/ci.yml/badge.svg)](https://github.com/santaclawbot/dora-learning-app/actions/workflows/ci.yml)
+[![Backend Tests](https://img.shields.io/badge/tests-passing-brightgreen)](https://github.com/santaclawbot/dora-learning-app/actions)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 A modern learning platform with Telegram integration, personalized lessons, and voice-enabled interactions.
 
 ## Stack
@@ -74,6 +78,58 @@ Open http://localhost:5173 in your browser. The app will connect to the backend 
 3. Set webhook: `https://your-domain.com/webhook/telegram`
 4. Start the backend server
 
+## Testing
+
+### Backend Tests
+
+The backend includes comprehensive unit and integration tests using **Vitest**:
+
+```bash
+cd backend
+npm install            # Install dependencies (includes test deps)
+npm test               # Run all tests
+npm run test:watch     # Run tests in watch mode
+npm run test:coverage  # Run tests with coverage report
+```
+
+**Test Coverage:**
+- CRUD operations (Users, Lessons, UserLessons, Responses)
+- API endpoints (all REST routes)
+- Photo upload/management
+- Telegram webhook handling
+- Progress tracking and dashboards
+
+### Test Files
+
+```
+backend/tests/
+├── setup.js           # Test database setup
+├── crud.test.js       # CRUD module tests
+├── api.test.js        # API endpoint tests
+├── photos.test.js     # Photo upload tests
+└── telegram.test.js   # Telegram webhook tests
+```
+
+## CI/CD Pipeline
+
+Automated testing and deployment via **GitHub Actions**:
+
+- ✅ **On Push/PR to main:** Runs all backend tests
+- ✅ **On successful tests:** Auto-deploys to production
+  - Frontend → Vercel
+  - Backend → Railway
+
+### Required Secrets
+
+Add these to your GitHub repository secrets:
+
+| Secret | Description |
+|--------|-------------|
+| `VERCEL_TOKEN` | Vercel API token |
+| `VERCEL_ORG_ID` | Vercel organization ID |
+| `VERCEL_PROJECT_ID` | Vercel project ID |
+| `RAILWAY_TOKEN` | Railway API token |
+
 ## Available Scripts
 
 ### Backend
@@ -84,6 +140,9 @@ npm run build          # Production build
 npm start              # Run production server
 npm run db:init        # Initialize database schema
 npm run db:seed        # Populate sample lessons
+npm test               # Run tests
+npm run test:watch     # Tests in watch mode
+npm run test:coverage  # Tests with coverage
 ```
 
 ### Frontend

@@ -171,10 +171,39 @@ function initializeDatabase() {
       FOREIGN KEY(lesson_id) REFERENCES lessons(id)
     );
 
+    -- Explorations table (tracks photos, questions, discoveries from kids)
+    CREATE TABLE IF NOT EXISTS explorations (
+      id TEXT PRIMARY KEY,
+      user_id INTEGER,
+      profile_id TEXT,
+      type TEXT NOT NULL,
+      content TEXT,
+      metadata TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY(user_id) REFERENCES users(id)
+    );
+
+    -- Topics discovered by kids
+    CREATE TABLE IF NOT EXISTS topics_discovered (
+      id TEXT PRIMARY KEY,
+      user_id INTEGER,
+      profile_id TEXT NOT NULL,
+      topic_name TEXT NOT NULL,
+      source TEXT,
+      discovery_count INTEGER DEFAULT 1,
+      first_seen_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      last_seen_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY(user_id) REFERENCES users(id)
+    );
+
     -- Index for faster queries
     CREATE INDEX IF NOT EXISTS idx_dora_messages_conv ON dora_messages(conversation_id);
     CREATE INDEX IF NOT EXISTS idx_dora_conversations_profile ON dora_conversations(profile_id);
     CREATE INDEX IF NOT EXISTS idx_photos_profile ON photos(profile_id);
+    CREATE INDEX IF NOT EXISTS idx_explorations_profile ON explorations(profile_id);
+    CREATE INDEX IF NOT EXISTS idx_explorations_user ON explorations(user_id);
+    CREATE INDEX IF NOT EXISTS idx_explorations_type ON explorations(type);
+    CREATE INDEX IF NOT EXISTS idx_topics_profile ON topics_discovered(profile_id);
   `;
 
   db.exec(schema, (err) => {
@@ -414,17 +443,22 @@ app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use('/audio', express.static(AUDIO_CACHE_DIR));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+app.use('/uploads/telegram', express.static(path.join(__dirname, 'uploads/telegram')));
 
 // Make database available to routes
 app.set('db', db);
 
-// Import CRUD and Photos routes
+// Import routes
 const crudRoutes = require('./routes/crud');
 const photosRoutes = require('./routes/photos');
+const telegramRoutes = require('./routes/telegram');
+const progressRoutes = require('./routes/progress');
 
 // Mount routes
 app.use('/api/crud', crudRoutes);
 app.use('/api/photos', photosRoutes);
+app.use('/webhook/telegram', telegramRoutes);
+app.use('/api/progress', progressRoutes);
 
 // Auth middleware
 function authenticateToken(req, res, next) {
@@ -1090,6 +1124,8 @@ app.listen(PORT, () => {
   console.log(`🎙️  ElevenLabs TTS: ${ELEVENLABS_API_KEY ? 'Configured' : 'Not configured'}`);
   console.log(`🤖 Ask Dora: ${OPENCLAW_GATEWAY_URL ? `OpenClaw @ ${OPENCLAW_GATEWAY_URL}` : 'Claude direct only'}`);
   console.log(`🔄 Claude fallback: ${anthropic ? 'Ready' : 'Not configured (no API key)'}`);
+  console.log(`📱 Telegram Bot: ${process.env.TELEGRAM_TOKEN ? 'Configured' : 'Not configured'}`);
+  console.log(`📊 Progress Dashboard: http://localhost:${PORT}/api/progress/dashboard/:profileId`);
   
   // Pre-cache greetings on startup (async, non-blocking)
   if (ELEVENLABS_API_KEY) {

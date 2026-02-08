@@ -156,9 +156,25 @@ function initializeDatabase() {
       FOREIGN KEY(conversation_id) REFERENCES dora_conversations(id)
     );
 
+    -- Photos table (for curious things kids snap)
+    CREATE TABLE IF NOT EXISTS photos (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      filename TEXT NOT NULL,
+      original_name TEXT,
+      mimetype TEXT,
+      size INTEGER,
+      url TEXT,
+      profile_id TEXT,
+      lesson_id INTEGER,
+      description TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY(lesson_id) REFERENCES lessons(id)
+    );
+
     -- Index for faster queries
     CREATE INDEX IF NOT EXISTS idx_dora_messages_conv ON dora_messages(conversation_id);
     CREATE INDEX IF NOT EXISTS idx_dora_conversations_profile ON dora_conversations(profile_id);
+    CREATE INDEX IF NOT EXISTS idx_photos_profile ON photos(profile_id);
   `;
 
   db.exec(schema, (err) => {
@@ -397,6 +413,18 @@ app.use(cors(corsOptions));
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use('/audio', express.static(AUDIO_CACHE_DIR));
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
+// Make database available to routes
+app.set('db', db);
+
+// Import CRUD and Photos routes
+const crudRoutes = require('./routes/crud');
+const photosRoutes = require('./routes/photos');
+
+// Mount routes
+app.use('/api/crud', crudRoutes);
+app.use('/api/photos', photosRoutes);
 
 // Auth middleware
 function authenticateToken(req, res, next) {

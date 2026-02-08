@@ -20,6 +20,10 @@ build/
 *.sqlite3
 data/
 
+# Uploads
+uploads/
+backend/uploads/
+
 # IDE
 .vscode/
 .idea/

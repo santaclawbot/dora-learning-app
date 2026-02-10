@@ -75,11 +75,13 @@ export default function AskDora() {
       setConversationId(response.data.conversationId)
       
       // Add Dora's greeting as first message
+      // API returns greeting as { text: string, audioUrl: string|null }
+      const greeting = response.data.greeting
       setMessages([{
         id: 'greeting',
         role: 'assistant',
-        content: response.data.greeting,
-        audioUrl: response.data.audioUrl
+        content: typeof greeting === 'string' ? greeting : greeting.text,
+        audioUrl: typeof greeting === 'string' ? response.data.audioUrl : greeting.audioUrl
       }])
     } catch (error) {
       console.error('Error initializing conversation:', error)
@@ -129,18 +131,20 @@ export default function AskDora() {
         { headers: { Authorization: `Bearer ${token}` } }
       )
       
+      // API returns response as { id, text, audioUrl, timestamp } or string (legacy)
+      const responseData = response.data.response
       const doraMessage = {
         id: `dora-${Date.now()}`,
         role: 'assistant',
-        content: response.data.response,
-        audioUrl: response.data.audioUrl
+        content: typeof responseData === 'string' ? responseData : responseData.text,
+        audioUrl: typeof responseData === 'string' ? response.data.audioUrl : responseData.audioUrl
       }
       
       setMessages(prev => [...prev, doraMessage])
       
       // Auto-play Dora's response
-      if (response.data.audioUrl) {
-        playAudio(doraMessage.id, response.data.audioUrl)
+      if (doraMessage.audioUrl) {
+        playAudio(doraMessage.id, doraMessage.audioUrl)
       }
     } catch (error) {
       console.error('Error sending message:', error)

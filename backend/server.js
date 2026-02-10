@@ -22,15 +22,19 @@ if (!JWT_SECRET && process.env.NODE_ENV === 'production') {
 // Only allow a development fallback in non-production
 const JWT_SECRET_FINAL = JWT_SECRET || (process.env.NODE_ENV !== 'production' ? 'DEVELOPMENT_ONLY_CHANGE_ME' : null);
 
-// Parent password hash from environment (bcrypt hash)
-// In development, uses a default hash for 'CHANGE_ME_IN_PRODUCTION'
-// Generate new hash: node -e "console.log(require('bcryptjs').hashSync('your-password', 10))"
-const DEFAULT_DEV_HASH = '$2b$10$DEVELOPMENT_ONLY_CHANGE_THIS_HASH_IN_PROD'; // Placeholder hash
-const PARENT_PASSWORD_HASH = process.env.PARENT_PASSWORD_HASH || 
-  (process.env.NODE_ENV !== 'production' ? DEFAULT_DEV_HASH : null);
-
-if (!PARENT_PASSWORD_HASH && process.env.NODE_ENV === 'production') {
-  console.error('❌ FATAL: PARENT_PASSWORD_HASH must be set in production!');
+// Parent password - supports both plain text (PARENT_PASSWORD) or pre-hashed (PARENT_PASSWORD_HASH)
+// Plain text is hashed on startup; hash is used directly
+let PARENT_PASSWORD_HASH;
+if (process.env.PARENT_PASSWORD_HASH) {
+  PARENT_PASSWORD_HASH = process.env.PARENT_PASSWORD_HASH;
+} else if (process.env.PARENT_PASSWORD) {
+  PARENT_PASSWORD_HASH = bcrypt.hashSync(process.env.PARENT_PASSWORD, 10);
+  console.log('🔐 Password hashed from PARENT_PASSWORD env var');
+} else if (process.env.NODE_ENV !== 'production') {
+  PARENT_PASSWORD_HASH = bcrypt.hashSync('dev-password', 10);
+  console.log('⚠️  Using default dev password: dev-password');
+} else {
+  console.error('❌ FATAL: PARENT_PASSWORD or PARENT_PASSWORD_HASH must be set in production!');
   process.exit(1);
 }
 
@@ -1083,8 +1087,12 @@ app.post('/api/ask-dora/message', authenticateToken, async (req, res) => {
           );
           
           responseText = claudeResult.text;
-          source = 'claude-fallback';
-          console.log('✅ Response from Claude direct');
+          source = claudeResult.success ? 'claude-fallback' : 'fallback-error';
+          if (claudeResult.success) {
+            console.log('✅ Response from Claude direct');
+          } else {
+            console.log('⚠️ Claude fallback failed:', claudeResult.error || 'No API key configured');
+          }
         }
         
         // Save Dora's response

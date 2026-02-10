@@ -5,7 +5,7 @@ import axios from 'axios'
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001'
 
 export default function LoginPage() {
-  const [username, setUsername] = useState('')
+  const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
@@ -18,7 +18,7 @@ export default function LoginPage() {
 
     try {
       const response = await axios.post(`${API_URL}/api/auth/login`, {
-        username,
+        email,
         password,
       })
       
@@ -54,16 +54,16 @@ export default function LoginPage() {
         {/* Login Form */}
         <form onSubmit={handleLogin} className="login-form">
           <div className="input-group">
-            <label htmlFor="username">👤 Username</label>
+            <label htmlFor="email">📧 Email</label>
             <input
-              id="username"
-              type="text"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              placeholder="Enter your username..."
+              id="email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="Enter your email..."
               className="login-input"
               required
-              autoComplete="username"
+              autoComplete="email"
             />
           </div>
 
@@ -85,7 +85,7 @@ export default function LoginPage() {
 
           <button 
             type="submit" 
-            disabled={loading || !username || !password} 
+            disabled={loading || !email || !password} 
             className="start-btn"
           >
             {loading ? (
@@ -100,7 +100,7 @@ export default function LoginPage() {
         </form>
 
         <div className="demo-hint">
-          <p>🔑 Demo: <strong>parent</strong> / <strong>family123</strong></p>
+          <p>🔑 Demo: <strong>parent@dora.family</strong> / <strong>family123</strong></p>
         </div>
       </div>
 

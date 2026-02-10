@@ -16,6 +16,9 @@ export default function AskDora() {
   const messagesEndRef = useRef(null)
   const audioRef = useRef(null)
   const inputRef = useRef(null)
+  const fileInputRef = useRef(null)
+  const videoRef = useRef(null)
+  const canvasRef = useRef(null)
   
   const [conversationId, setConversationId] = useState(null)
   const [messages, setMessages] = useState([])
@@ -24,6 +27,12 @@ export default function AskDora() {
   const [isInitializing, setIsInitializing] = useState(true)
   const [playingAudioId, setPlayingAudioId] = useState(null)
   const [profile, setProfile] = useState(null)
+  
+  // Camera/Photo state
+  const [showCamera, setShowCamera] = useState(false)
+  const [cameraStream, setCameraStream] = useState(null)
+  const [capturedImage, setCapturedImage] = useState(null)
+  const [isAnalyzingImage, setIsAnalyzingImage] = useState(false)
 
   useEffect(() => {
     const token = localStorage.getItem('token')
@@ -183,6 +192,144 @@ export default function AskDora() {
     console.error('Audio playback error')
   }
 
+  // ========== CAMERA/PHOTO FUNCTIONS ==========
+  
+  const startCamera = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
+        audio: false
+      })
+      setCameraStream(stream)
+      setShowCamera(true)
+      
+      // Wait for ref to be available
+      setTimeout(() => {
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream
+          videoRef.current.play()
+        }
+      }, 100)
+    } catch (err) {
+      console.error('Camera error:', err)
+      // Fall back to file upload
+      fileInputRef.current?.click()
+    }
+  }
+  
+  const stopCamera = () => {
+    if (cameraStream) {
+      cameraStream.getTracks().forEach(track => track.stop())
+      setCameraStream(null)
+    }
+    setShowCamera(false)
+  }
+  
+  const capturePhoto = () => {
+    if (!videoRef.current || !canvasRef.current) return
+    
+    const video = videoRef.current
+    const canvas = canvasRef.current
+    const ctx = canvas.getContext('2d')
+    
+    canvas.width = video.videoWidth
+    canvas.height = video.videoHeight
+    ctx.drawImage(video, 0, 0)
+    
+    canvas.toBlob((blob) => {
+      if (blob) {
+        const url = URL.createObjectURL(blob)
+        setCapturedImage({ blob, url })
+        stopCamera()
+      }
+    }, 'image/jpeg', 0.9)
+  }
+  
+  const handleFileUpload = (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    
+    if (!file.type.startsWith('image/')) {
+      alert('Please select an image! 📷')
+      return
+    }
+    
+    const url = URL.createObjectURL(file)
+    setCapturedImage({ blob: file, url })
+  }
+  
+  const cancelPhoto = () => {
+    if (capturedImage?.url) {
+      URL.revokeObjectURL(capturedImage.url)
+    }
+    setCapturedImage(null)
+    stopCamera()
+  }
+  
+  const analyzePhoto = async () => {
+    if (!capturedImage || isAnalyzingImage) return
+    
+    setIsAnalyzingImage(true)
+    
+    // Add user message with photo
+    const userMessage = {
+      id: `user-photo-${Date.now()}`,
+      role: 'user',
+      content: '📷 Look at this!',
+      imageUrl: capturedImage.url
+    }
+    setMessages(prev => [...prev, userMessage])
+    
+    try {
+      const token = localStorage.getItem('token')
+      const storedProfile = localStorage.getItem('selectedProfile')
+      const profileData = JSON.parse(storedProfile)
+      
+      const formData = new FormData()
+      formData.append('image', capturedImage.blob, 'photo.jpg')
+      formData.append('profileId', profileData.id)
+      formData.append('profileName', profileData.name)
+      formData.append('profileAge', profileData.age || 5)
+      
+      const response = await axios.post(
+        `${API_URL}/api/vision/analyze`,
+        formData,
+        { 
+          headers: { 
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'multipart/form-data'
+          }
+        }
+      )
+      
+      const doraMessage = {
+        id: `dora-vision-${Date.now()}`,
+        role: 'assistant',
+        content: response.data.description,
+        audioUrl: response.data.audioUrl
+      }
+      setMessages(prev => [...prev, doraMessage])
+      
+      // Auto-play response
+      if (response.data.audioUrl) {
+        playAudio(doraMessage.id, response.data.audioUrl)
+      }
+      
+    } catch (error) {
+      console.error('Vision analysis error:', error)
+      const errorMessage = {
+        id: `error-${Date.now()}`,
+        role: 'assistant',
+        content: error.response?.data?.error || "Oops! I couldn't see that picture clearly. Try again! 📸",
+        audioUrl: null
+      }
+      setMessages(prev => [...prev, errorMessage])
+    } finally {
+      setIsAnalyzingImage(false)
+      cancelPhoto()
+    }
+  }
+
   if (isInitializing) {
     return (
       <div className="ask-dora-loading">
@@ -205,6 +352,49 @@ export default function AskDora() {
         onEnded={handleAudioEnd}
         onError={handleAudioError}
       />
+      
+      {/* Hidden elements */}
+      <canvas ref={canvasRef} style={{ display: 'none' }} />
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        onChange={handleFileUpload}
+        style={{ display: 'none' }}
+      />
+      
+      {/* Camera Modal */}
+      {showCamera && (
+        <div className="camera-modal">
+          <div className="camera-container">
+            <video ref={videoRef} autoPlay playsInline muted className="camera-video" />
+            <div className="camera-controls">
+              <button onClick={stopCamera} className="camera-btn cancel">✕</button>
+              <button onClick={capturePhoto} className="camera-btn capture">📸</button>
+              <button onClick={() => { stopCamera(); fileInputRef.current?.click() }} className="camera-btn upload">📁</button>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* Image Preview Modal */}
+      {capturedImage && !showCamera && (
+        <div className="camera-modal">
+          <div className="preview-container">
+            <img src={capturedImage.url} alt="Captured" className="preview-image" />
+            <p className="preview-text">Send this photo to Dora? 🌟</p>
+            <div className="preview-controls">
+              <button onClick={cancelPhoto} className="preview-btn cancel" disabled={isAnalyzingImage}>
+                🔄 Retake
+              </button>
+              <button onClick={analyzePhoto} className="preview-btn send" disabled={isAnalyzingImage}>
+                {isAnalyzingImage ? '👀 Looking...' : '✨ Send to Dora!'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       
       {/* Header */}
       <header className="chat-header">
@@ -230,6 +420,9 @@ export default function AskDora() {
                 {msg.role === 'user' ? (profile?.avatar || '👧') : '🦊'}
               </div>
               <div className="message-bubble">
+                {msg.imageUrl && (
+                  <img src={msg.imageUrl} alt="Photo" className="message-image" />
+                )}
                 <p className="message-text">{msg.content}</p>
                 {msg.role === 'assistant' && msg.audioUrl && (
                   <button 
@@ -283,18 +476,27 @@ export default function AskDora() {
       {/* Input Area */}
       <footer className="chat-footer">
         <form onSubmit={handleSubmit} className="input-form">
+          <button 
+            type="button"
+            onClick={startCamera}
+            disabled={isLoading || isAnalyzingImage}
+            className="camera-input-btn"
+            title="Take a photo"
+          >
+            📷
+          </button>
           <input
             ref={inputRef}
             type="text"
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
             placeholder="Ask Dora anything..."
-            disabled={isLoading}
+            disabled={isLoading || isAnalyzingImage}
             className="chat-input"
           />
           <button 
             type="submit" 
-            disabled={!inputValue.trim() || isLoading}
+            disabled={!inputValue.trim() || isLoading || isAnalyzingImage}
             className="send-btn"
           >
             🚀
@@ -649,6 +851,164 @@ const pageStyles = `
   .send-btn:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+  }
+
+  /* Camera button in input */
+  .camera-input-btn {
+    width: 50px;
+    height: 50px;
+    font-size: 1.5rem;
+    background: linear-gradient(135deg, #88CAAF 0%, #6B9E8A 100%);
+    border: none;
+    border-radius: 50%;
+    cursor: pointer;
+    transition: transform 0.2s, box-shadow 0.2s;
+    box-shadow: 0 3px 10px rgba(136, 202, 175, 0.3);
+    flex-shrink: 0;
+  }
+
+  .camera-input-btn:hover:not(:disabled) {
+    transform: scale(1.1);
+  }
+
+  .camera-input-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  /* Message images */
+  .message-image {
+    max-width: 100%;
+    max-height: 200px;
+    border-radius: 15px;
+    margin-bottom: 10px;
+    object-fit: cover;
+  }
+
+  /* Camera Modal */
+  .camera-modal {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.9);
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+
+  .camera-container {
+    width: 100%;
+    max-width: 500px;
+    position: relative;
+  }
+
+  .camera-video {
+    width: 100%;
+    border-radius: 20px;
+    background: #000;
+  }
+
+  .camera-controls {
+    position: absolute;
+    bottom: 20px;
+    left: 0;
+    right: 0;
+    display: flex;
+    justify-content: center;
+    gap: 20px;
+  }
+
+  .camera-btn {
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    border: none;
+    font-size: 1.8rem;
+    cursor: pointer;
+    transition: transform 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .camera-btn.capture {
+    width: 80px;
+    height: 80px;
+    background: white;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+  }
+
+  .camera-btn.cancel {
+    background: rgba(255,255,255,0.2);
+    color: white;
+  }
+
+  .camera-btn.upload {
+    background: rgba(255,255,255,0.2);
+    color: white;
+  }
+
+  .camera-btn:hover {
+    transform: scale(1.1);
+  }
+
+  /* Preview Modal */
+  .preview-container {
+    width: 100%;
+    max-width: 400px;
+    text-align: center;
+  }
+
+  .preview-image {
+    width: 100%;
+    max-height: 50vh;
+    object-fit: contain;
+    border-radius: 20px;
+    margin-bottom: 20px;
+  }
+
+  .preview-text {
+    color: white;
+    font-size: 1.3rem;
+    margin-bottom: 20px;
+    font-family: inherit;
+  }
+
+  .preview-controls {
+    display: flex;
+    gap: 15px;
+    justify-content: center;
+  }
+
+  .preview-btn {
+    padding: 15px 30px;
+    border-radius: 30px;
+    border: none;
+    font-size: 1.1rem;
+    font-weight: bold;
+    cursor: pointer;
+    font-family: inherit;
+    transition: transform 0.2s, opacity 0.2s;
+  }
+
+  .preview-btn.cancel {
+    background: rgba(255,255,255,0.2);
+    color: white;
+  }
+
+  .preview-btn.send {
+    background: linear-gradient(135deg, #FFD93D 0%, #FF8B66 100%);
+    color: white;
+  }
+
+  .preview-btn:hover:not(:disabled) {
+    transform: scale(1.05);
+  }
+
+  .preview-btn:disabled {
+    opacity: 0.7;
+    cursor: wait;
   }
 
   /* Tablet optimizations */

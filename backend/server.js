@@ -14,22 +14,25 @@ const PORT = process.env.PORT || process.env.BACKEND_PORT || 3001;
 const JWT_SECRET = process.env.JWT_SECRET || 'dora-super-secret-key-2024';
 
 // Hardcoded users for MVP - Parent account with child profiles
+// Supports both email and username for login flexibility
 const USERS = {
-  'parent': { 
+  'parent@dora.family': { 
     id: 1, 
+    email: 'parent@dora.family',
     username: 'parent', 
     password: 'family123', 
     name: 'Parent', 
     avatar: '👨‍👩‍👧‍👦',
     profiles: [
-      { id: 'aiden', name: 'Aiden', avatar: '🦁' },
-      { id: 'marcus', name: 'Marcus', avatar: '🐻' }
+      { id: 'aiden', name: 'Aiden', avatar: '🦁', age: 6 },
+      { id: 'marcus', name: 'Marcus', avatar: '🐻', age: 3 }
     ]
-  },
-  // Keep old users for backwards compatibility
-  'aiden': { id: 2, username: 'aiden', password: 'aiden123', name: 'Aiden', avatar: '🦁', profiles: [{ id: 'aiden', name: 'Aiden', avatar: '🦁' }] },
-  'marcus': { id: 3, username: 'marcus', password: 'marcus123', name: 'Marcus', avatar: '🐻', profiles: [{ id: 'marcus', name: 'Marcus', avatar: '🐻' }] }
+  }
 };
+
+// Create lookup maps for flexible login (email or username)
+const USERS_BY_USERNAME = { 'parent': USERS['parent@dora.family'] };
+const USERS_BY_EMAIL = USERS;
 
 // ElevenLabs config
 const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY || 'sk_77718b72529589bb7f4b81b6f6e875436b8238093c3f9009';
@@ -490,20 +493,23 @@ app.get('/health', (req, res) => {
 // ========== AUTH ROUTES ==========
 
 app.post('/api/auth/login', (req, res) => {
-  const { username, password } = req.body;
+  const { email, username, password } = req.body;
+  const loginIdentifier = email || username; // Support both email and username
 
-  if (!username || !password) {
-    return res.status(400).json({ error: 'Username and password required' });
+  if (!loginIdentifier || !password) {
+    return res.status(400).json({ error: 'Email and password required' });
   }
 
-  const user = USERS[username.toLowerCase()];
+  // Try to find user by email first, then by username
+  const normalizedInput = loginIdentifier.toLowerCase().trim();
+  const user = USERS_BY_EMAIL[normalizedInput] || USERS_BY_USERNAME[normalizedInput];
   
   if (!user || user.password !== password) {
-    return res.status(401).json({ error: 'Wrong username or password' });
+    return res.status(401).json({ error: 'Wrong email or password' });
   }
 
   const token = jwt.sign(
-    { id: user.id, username: user.username, name: user.name },
+    { id: user.id, email: user.email, username: user.username, name: user.name },
     JWT_SECRET,
     { expiresIn: '7d' }
   );
@@ -512,6 +518,7 @@ app.post('/api/auth/login', (req, res) => {
     token,
     user: {
       id: user.id,
+      email: user.email,
       username: user.username,
       name: user.name,
       avatar: user.avatar,
@@ -1104,6 +1111,303 @@ app.post('/api/ask-dora/message', authenticateToken, async (req, res) => {
       }
     }
   );
+});
+
+// ========== VISION ANALYSIS ROUTES (Claude Vision API) ==========
+
+// Multer for in-memory image processing
+const multer = require('multer');
+const visionUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB max
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+    if (allowedTypes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only images (JPG, PNG, GIF, WebP) are allowed! 🖼️'), false);
+    }
+  }
+});
+
+// Helper: Build age-appropriate vision prompt
+function buildVisionPrompt(childName, childAge) {
+  const ageGroup = childAge <= 4 ? 'toddler' : childAge <= 6 ? 'young-child' : 'child';
+  
+  const prompts = {
+    'toddler': `You are Dora, a friendly teacher for ${childName}, who is ${childAge} years old (a toddler).
+Describe what you see in this picture using very simple words (2-3 syllable max).
+Use 1-2 short sentences only. Be warm and excited!
+Focus on: colors, animals, big shapes, familiar objects.
+Use lots of emojis! Example: "Wow! A red ball! 🔴⚽"`,
+    
+    'young-child': `You are Dora, a friendly teacher for ${childName}, who is ${childAge} years old.
+Describe what you see in this picture in a fun, educational way.
+Use 2-3 sentences with simple vocabulary a 5-6 year old understands.
+Include one fun fact if relevant. Be encouraging and curious!
+Use emojis naturally. Example: "I see a beautiful butterfly! 🦋 Did you know butterflies taste with their feet? How cool is that! ⭐"`,
+    
+    'child': `You are Dora, a friendly teacher for ${childName}, who is ${childAge} years old.
+Describe what you see and explain something interesting about it.
+Use 2-4 sentences that spark curiosity. You can use slightly more complex vocabulary.
+Include a fun fact or ask a question to encourage exploration.
+Example: "That's a praying mantis! 🦗 These amazing insects can turn their heads almost all the way around - like an owl! Have you ever seen one catch its food?"`
+  };
+  
+  return prompts[ageGroup];
+}
+
+// POST /api/vision/analyze - Analyze an image with Claude Vision
+app.post('/api/vision/analyze', authenticateToken, visionUpload.single('image'), async (req, res) => {
+  const { profileId, profileName, profileAge } = req.body;
+  const userId = req.user.id;
+  
+  // Check rate limit (shared with ask-dora)
+  const rateCheck = checkRateLimit(profileId || `user_${userId}`);
+  if (!rateCheck.allowed) {
+    return res.status(429).json({
+      success: false,
+      error: `Too many requests! Please wait ${rateCheck.minutesLeft} minutes. 🌟`,
+      retryAfterMinutes: rateCheck.minutesLeft
+    });
+  }
+  
+  // Validate image input
+  let imageData = null;
+  let mediaType = 'image/jpeg';
+  
+  if (req.file) {
+    // Image uploaded as file
+    imageData = req.file.buffer.toString('base64');
+    mediaType = req.file.mimetype;
+  } else if (req.body.imageBase64) {
+    // Image sent as base64 string
+    imageData = req.body.imageBase64.replace(/^data:image\/\w+;base64,/, '');
+    const match = req.body.imageBase64.match(/^data:(image\/\w+);base64,/);
+    if (match) mediaType = match[1];
+  } else {
+    return res.status(400).json({
+      success: false,
+      error: 'Please send a photo for me to look at! 📷'
+    });
+  }
+  
+  // Check if Anthropic client is available
+  if (!anthropic) {
+    return res.status(503).json({
+      success: false,
+      error: 'My eyes are sleepy right now! Try again soon. 👀💤'
+    });
+  }
+  
+  try {
+    const childName = profileName || 'friend';
+    const childAge = parseInt(profileAge) || 5;
+    
+    console.log(`👁️ Analyzing image for ${childName} (age ${childAge})...`);
+    
+    const systemPrompt = buildVisionPrompt(childName, childAge);
+    
+    const response = await anthropic.messages.create({
+      model: 'claude-sonnet-4-20250514', // Using Claude Sonnet with vision
+      max_tokens: 300,
+      messages: [
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'image',
+              source: {
+                type: 'base64',
+                media_type: mediaType,
+                data: imageData
+              }
+            },
+            {
+              type: 'text',
+              text: systemPrompt + '\n\nWhat do you see in this picture?'
+            }
+          ]
+        }
+      ]
+    });
+    
+    const description = response.content[0].text;
+    console.log('✅ Vision analysis complete:', description.substring(0, 50) + '...');
+    
+    // Generate TTS for the description
+    let audioUrl = null;
+    try {
+      const ttsResult = await generateDoraTTS(description);
+      audioUrl = ttsResult.audioUrl;
+    } catch (ttsError) {
+      console.error('⚠️ Vision TTS failed, continuing without audio:', ttsError.message);
+    }
+    
+    // Save to explorations table
+    try {
+      const explorationId = generateId('exp_');
+      await new Promise((resolve, reject) => {
+        db.run(
+          `INSERT INTO explorations (id, user_id, profile_id, type, content, metadata)
+           VALUES (?, ?, ?, 'photo_analysis', ?, ?)`,
+          [explorationId, userId, profileId, description, JSON.stringify({ mediaType, hasAudio: !!audioUrl })],
+          (err) => {
+            if (err) reject(err);
+            else resolve();
+          }
+        );
+      });
+    } catch (dbErr) {
+      console.warn('Could not save exploration:', dbErr.message);
+    }
+    
+    res.json({
+      success: true,
+      description: description,
+      audioUrl: audioUrl,
+      rateLimit: {
+        remaining: rateCheck.remaining,
+        limit: RATE_LIMIT_MAX
+      }
+    });
+    
+  } catch (error) {
+    console.error('❌ Vision analysis error:', error);
+    
+    // Handle specific Claude errors
+    if (error.status === 400 && error.message?.includes('image')) {
+      return res.status(400).json({
+        success: false,
+        error: 'Hmm, I had trouble seeing that picture. Can you try a different one? 📸'
+      });
+    }
+    
+    res.status(500).json({
+      success: false,
+      error: 'Oops! My eyes got confused. Let\'s try again! 👀🌈'
+    });
+  }
+});
+
+// POST /api/vision/analyze-with-question - Analyze image and answer a question about it
+app.post('/api/vision/analyze-with-question', authenticateToken, visionUpload.single('image'), async (req, res) => {
+  const { profileId, profileName, profileAge, question } = req.body;
+  const userId = req.user.id;
+  
+  // Validate inputs
+  if (!question || !question.trim()) {
+    return res.status(400).json({
+      success: false,
+      error: 'What would you like to know about this picture? 🤔'
+    });
+  }
+  
+  // Check rate limit
+  const rateCheck = checkRateLimit(profileId || `user_${userId}`);
+  if (!rateCheck.allowed) {
+    return res.status(429).json({
+      success: false,
+      error: `Too many questions! Please wait ${rateCheck.minutesLeft} minutes. 🌟`,
+      retryAfterMinutes: rateCheck.minutesLeft
+    });
+  }
+  
+  // Validate image input
+  let imageData = null;
+  let mediaType = 'image/jpeg';
+  
+  if (req.file) {
+    imageData = req.file.buffer.toString('base64');
+    mediaType = req.file.mimetype;
+  } else if (req.body.imageBase64) {
+    imageData = req.body.imageBase64.replace(/^data:image\/\w+;base64,/, '');
+    const match = req.body.imageBase64.match(/^data:(image\/\w+);base64,/);
+    if (match) mediaType = match[1];
+  } else {
+    return res.status(400).json({
+      success: false,
+      error: 'Please send a photo for me to look at! 📷'
+    });
+  }
+  
+  if (!anthropic) {
+    return res.status(503).json({
+      success: false,
+      error: 'My eyes are sleepy right now! Try again soon. 👀💤'
+    });
+  }
+  
+  try {
+    const childName = profileName || 'friend';
+    const childAge = parseInt(profileAge) || 5;
+    
+    console.log(`👁️💬 Answering question for ${childName} (age ${childAge}): "${question}"`);
+    
+    const ageContext = childAge <= 4 
+      ? 'Use very simple words (1-2 syllables). Keep it to 1-2 short sentences. Use lots of emojis!'
+      : childAge <= 6
+      ? 'Use simple vocabulary a 5-6 year old understands. 2-3 sentences max. Be encouraging and use emojis!'
+      : 'Explain in a fun, educational way. Use 2-4 sentences. Include a fun fact if relevant.';
+    
+    const response = await anthropic.messages.create({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 300,
+      messages: [
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'image',
+              source: {
+                type: 'base64',
+                media_type: mediaType,
+                data: imageData
+              }
+            },
+            {
+              type: 'text',
+              text: `You are Dora, a friendly teacher for ${childName}, who is ${childAge} years old.
+${ageContext}
+
+The child is looking at this picture and asking: "${question}"
+
+Answer their question about this picture in an age-appropriate, fun, and educational way.`
+            }
+          ]
+        }
+      ]
+    });
+    
+    const answer = response.content[0].text;
+    console.log('✅ Question answered:', answer.substring(0, 50) + '...');
+    
+    // Generate TTS
+    let audioUrl = null;
+    try {
+      const ttsResult = await generateDoraTTS(answer);
+      audioUrl = ttsResult.audioUrl;
+    } catch (ttsError) {
+      console.error('⚠️ TTS failed:', ttsError.message);
+    }
+    
+    res.json({
+      success: true,
+      answer: answer,
+      audioUrl: audioUrl,
+      rateLimit: {
+        remaining: rateCheck.remaining,
+        limit: RATE_LIMIT_MAX
+      }
+    });
+    
+  } catch (error) {
+    console.error('❌ Vision question error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Oops! I got confused. Let\'s try again! 🌈'
+    });
+  }
 });
 
 // 404 handler

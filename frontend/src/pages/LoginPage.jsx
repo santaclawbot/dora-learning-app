@@ -99,9 +99,12 @@ export default function LoginPage() {
           </button>
         </form>
 
-        <div className="demo-hint">
-          <p>🔑 Demo: <strong>parent@dora.family</strong> / <strong>family123</strong></p>
-        </div>
+        {/* Demo credentials should be set in .env, not shown in UI for security */}
+        {import.meta.env.VITE_SHOW_DEMO_HINT === 'true' && (
+          <div className="demo-hint">
+            <p>🔑 See .env for demo credentials</p>
+          </div>
+        )}
       </div>
 
       <div className="login-footer">

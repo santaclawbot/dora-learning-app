@@ -19,11 +19,17 @@
 ```
 PORT=3001
 NODE_ENV=production
-JWT_SECRET=dora-super-secret-key-2024
-ELEVENLABS_API_KEY=sk_77718b72529589bb7f4b81b6f6e875436b8238093c3f9009
+JWT_SECRET=<generate-secure-random-string>
+ELEVENLABS_API_KEY=<your-elevenlabs-api-key>
 ELEVENLABS_VOICE_ID=EXAVITQu4vr4xnSDxMaL
 DATABASE_URL=./data/dora.db
+PARENT_PASSWORD_HASH=<bcrypt-hash-of-your-password>
 ```
+
+> ⚠️ **Security Notes**:
+> - Generate JWT_SECRET: `openssl rand -base64 32`
+> - Generate password hash: `node -e "console.log(require('bcryptjs').hashSync('your-password', 10))"`
+> - Never use default or example passwords in production!
 
 6. Go to **Settings → Networking** → **Generate Domain**
 7. Copy the URL (e.g., `https://dora-learning-app-backend-production.up.railway.app`)
@@ -62,8 +68,8 @@ CORS_ORIGINS=https://dora-learning-app.vercel.app,https://YOUR-VERCEL-URL.vercel
 
 1. Open your Vercel URL in browser
 2. Login with:
-   - Username: `aiden` / Password: `aiden123`
-   - Username: `marcus` / Password: `marcus123`
+   - Email: `parent@dora.family` or Username: `parent`
+   - Password: the password you used to generate `PARENT_PASSWORD_HASH`
 3. Verify:
    - ✅ Login works
    - ✅ Lessons load

@@ -12,16 +12,36 @@ const Anthropic = require('@anthropic-ai/sdk');
 
 const app = express();
 const PORT = process.env.PORT || process.env.BACKEND_PORT || 3001;
-const JWT_SECRET = process.env.JWT_SECRET || 'dora-super-secret-key-2024';
 
-// Hardcoded users for MVP - Parent account with child profiles
+// JWT_SECRET must be set in production - no hardcoded fallback!
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET && process.env.NODE_ENV === 'production') {
+  console.error('❌ FATAL: JWT_SECRET must be set in production!');
+  process.exit(1);
+}
+// Only allow a development fallback in non-production
+const JWT_SECRET_FINAL = JWT_SECRET || (process.env.NODE_ENV !== 'production' ? 'DEVELOPMENT_ONLY_CHANGE_ME' : null);
+
+// Parent password hash from environment (bcrypt hash)
+// In development, uses a default hash for 'CHANGE_ME_IN_PRODUCTION'
+// Generate new hash: node -e "console.log(require('bcryptjs').hashSync('your-password', 10))"
+const DEFAULT_DEV_HASH = '$2b$10$DEVELOPMENT_ONLY_CHANGE_THIS_HASH_IN_PROD'; // Placeholder hash
+const PARENT_PASSWORD_HASH = process.env.PARENT_PASSWORD_HASH || 
+  (process.env.NODE_ENV !== 'production' ? DEFAULT_DEV_HASH : null);
+
+if (!PARENT_PASSWORD_HASH && process.env.NODE_ENV === 'production') {
+  console.error('❌ FATAL: PARENT_PASSWORD_HASH must be set in production!');
+  process.exit(1);
+}
+
+// Demo users for MVP - password hash from environment in production
 // Supports both email and username for login flexibility
 const USERS = {
   'parent@dora.family': { 
     id: 1, 
     email: 'parent@dora.family',
     username: 'parent', 
-    password: '$2b$10$sRMN5QzdMrLZkSqTRbZhLOFik/h8m5snRpK0WU/y0.VXUwp1KKb92', // bcrypt hashed
+    password: PARENT_PASSWORD_HASH,
     name: 'Parent', 
     avatar: '👨‍👩‍👧‍👦',
     profiles: [
@@ -35,8 +55,8 @@ const USERS = {
 const USERS_BY_USERNAME = { 'parent': USERS['parent@dora.family'] };
 const USERS_BY_EMAIL = USERS;
 
-// ElevenLabs config
-const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY || 'sk_77718b72529589bb7f4b81b6f6e875436b8238093c3f9009';
+// ElevenLabs config - API key must come from environment only!
+const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY;
 const ELEVENLABS_VOICE_ID = process.env.ELEVENLABS_VOICE_ID || 'EXAVITQu4vr4xnSDxMaL'; // Bella - warm female voice
 
 // Anthropic/Claude config for Ask Dora (fallback)
@@ -473,7 +493,7 @@ function authenticateToken(req, res, next) {
     return res.status(401).json({ error: 'Access token required' });
   }
 
-  jwt.verify(token, JWT_SECRET, (err, user) => {
+  jwt.verify(token, JWT_SECRET_FINAL, (err, user) => {
     if (err) {
       return res.status(403).json({ error: 'Invalid token' });
     }
@@ -511,7 +531,7 @@ app.post('/api/auth/login', (req, res) => {
 
   const token = jwt.sign(
     { id: user.id, email: user.email, username: user.username, name: user.name },
-    JWT_SECRET,
+    JWT_SECRET_FINAL,
     { expiresIn: '7d' }
   );
 

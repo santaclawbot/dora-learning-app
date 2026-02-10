@@ -6,6 +6,7 @@ const path = require('path');
 const fs = require('fs');
 const sqlite3 = require('sqlite3').verbose();
 const jwt = require('jsonwebtoken');
+const bcrypt = require('bcryptjs');
 const axios = require('axios');
 const Anthropic = require('@anthropic-ai/sdk');
 
@@ -20,7 +21,7 @@ const USERS = {
     id: 1, 
     email: 'parent@dora.family',
     username: 'parent', 
-    password: 'family123', 
+    password: '$2b$10$sRMN5QzdMrLZkSqTRbZhLOFik/h8m5snRpK0WU/y0.VXUwp1KKb92', // bcrypt hashed
     name: 'Parent', 
     avatar: '👨‍👩‍👧‍👦',
     profiles: [
@@ -504,7 +505,7 @@ app.post('/api/auth/login', (req, res) => {
   const normalizedInput = loginIdentifier.toLowerCase().trim();
   const user = USERS_BY_EMAIL[normalizedInput] || USERS_BY_USERNAME[normalizedInput];
   
-  if (!user || user.password !== password) {
+  if (!user || !bcrypt.compareSync(password, user.password)) {
     return res.status(401).json({ error: 'Wrong email or password' });
   }
 
